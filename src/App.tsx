@@ -150,7 +150,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <span>Entwickelt von</span>
-            <ArcanePixelsBrand theme="light" size="xs" variant="badge" />
+            <ArcanePixelsBrand theme="light" variant="text" />
           </div>
         </div>
       </footer>

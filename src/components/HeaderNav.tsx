@@ -126,7 +126,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
             <span>DIN-A4 Drucken</span>
           </button>
           <div className="h-4 w-px bg-slate-200 mx-0.5" />
-          <ArcanePixelsBrand theme="light" size="xs" variant="badge" />
+          <ArcanePixelsBrand theme="light" variant="text" />
         </div>
       </div>
 

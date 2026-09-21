@@ -1,10 +1,9 @@
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
 
 interface ArcanePixelsBrandProps {
   theme?: 'dark' | 'light' | 'auto';
-  size?: 'xs' | 'sm' | 'md' | 'lg';
-  variant?: 'badge' | 'ghost' | 'plain' | 'prominent';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  variant?: 'badge' | 'ghost' | 'plain' | 'prominent' | 'text';
   showLabel?: boolean;
   subtitle?: string;
   className?: string;
@@ -12,7 +11,7 @@ interface ArcanePixelsBrandProps {
 
 /**
  * ArcanePixels Brand Logo & Link Component
- * Displays the authentic ArcanePixels logo (monogram badge + wordmark)
+ * Displays the authentic ArcanePixels logo (Sensenmann/camera mark, name baked into the SVG)
  * and links to https://ArcanePixels.de
  */
 export const ArcanePixelsBrand: React.FC<ArcanePixelsBrandProps> = ({
@@ -24,47 +23,53 @@ export const ArcanePixelsBrand: React.FC<ArcanePixelsBrandProps> = ({
   className = '',
 }) => {
   const isDark = theme === 'dark';
+  const logoSrc = isDark ? '/arcanepixels-logo-white.svg' : '/arcanepixels-logo-black.svg';
 
-  // Badge icon sizes
-  const iconDimensions = {
-    xs: { box: 'w-6 h-6', text: 'text-xs', rounded: 'rounded-md' },
-    sm: { box: 'w-7 h-7', text: 'text-xs font-bold', rounded: 'rounded-lg' },
-    md: { box: 'w-9 h-9', text: 'text-sm font-black', rounded: 'rounded-xl' },
-    lg: { box: 'w-11 h-11', text: 'text-base font-black', rounded: 'rounded-2xl' },
-  };
+  if (variant === 'text') {
+    const textColor = isDark
+      ? 'text-slate-300 hover:text-[#72d2b9]'
+      : 'text-slate-600 hover:text-[#0f7a6a]';
+    return (
+      <a
+        href="https://ArcanePixels.de"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="ArcanePixels.de besuchen (Software, Web & Werkzeuge)"
+        className={`font-medium transition-colors ${textColor} ${className}`}
+      >
+        ArcanePixels
+      </a>
+    );
+  }
 
-  const titleSizes = {
-    xs: 'text-xs font-bold',
-    sm: 'text-sm font-bold',
-    md: 'text-base font-extrabold',
-    lg: 'text-lg font-black',
+  // Logo sizes (width; height follows the SVG's own aspect ratio)
+  const logoSizes = {
+    xs: 'w-8',
+    sm: 'w-10',
+    md: 'w-14',
+    lg: 'w-20',
+    xl: 'w-48',
   };
 
   // Color schemes
   const styles = isDark
     ? {
-        badgeBg: 'bg-[#72d2b9] text-[#0f172a] shadow-md shadow-teal-950/40',
         container:
           variant === 'prominent'
             ? 'bg-slate-800/90 border border-slate-700/90 hover:border-[#72d2b9]/60 hover:bg-slate-800 shadow-xl'
             : variant === 'badge'
             ? 'bg-slate-800/80 border border-slate-700/80 hover:border-[#72d2b9]/60 hover:bg-slate-750 shadow-xs'
             : 'hover:bg-slate-800/60',
-        title: 'text-white group-hover:text-[#72d2b9]',
-        accent: 'text-[#72d2b9]',
         sub: 'text-slate-400',
         linkIcon: 'text-slate-400 group-hover:text-[#72d2b9]',
       }
     : {
-        badgeBg: 'bg-[#0f7a6a] text-white shadow-md shadow-emerald-950/10',
         container:
           variant === 'prominent'
             ? 'bg-white border border-slate-200 hover:border-[#0f7a6a]/60 hover:bg-slate-50 shadow-md'
             : variant === 'badge'
             ? 'bg-slate-50 border border-slate-200 hover:border-[#0f7a6a]/60 hover:bg-white shadow-2xs'
             : 'hover:bg-slate-100',
-        title: 'text-slate-900 group-hover:text-[#0f7a6a]',
-        accent: 'text-[#0f7a6a]',
         sub: 'text-slate-500',
         linkIcon: 'text-slate-400 group-hover:text-[#0f7a6a]',
       };
@@ -78,7 +83,9 @@ export const ArcanePixelsBrand: React.FC<ArcanePixelsBrandProps> = ({
       ? 'px-2.5 py-1.5'
       : size === 'md'
       ? 'px-3.5 py-2'
-      : 'px-4 py-2.5';
+      : size === 'lg'
+      ? 'px-4 py-2.5'
+      : 'px-5 py-3';
 
   return (
     <a
@@ -88,29 +95,17 @@ export const ArcanePixelsBrand: React.FC<ArcanePixelsBrandProps> = ({
       title="ArcanePixels.de besuchen (Software, Web & Werkzeuge)"
       className={`inline-flex items-center gap-2.5 group transition-all duration-150 rounded-xl cursor-pointer ${padClass} ${styles.container} ${className}`}
     >
-      {/* Official ArcanePixels Monogram Emblem (AP Badge) */}
-      <div
-        className={`grid place-items-center shrink-0 tracking-tight transition-transform duration-150 group-hover:scale-105 ${iconDimensions[size].box} ${iconDimensions[size].rounded} ${styles.badgeBg} font-sans select-none`}
-        aria-hidden="true"
-      >
-        <span className={iconDimensions[size].text}>AP</span>
-      </div>
+      <img
+        src={logoSrc}
+        alt="ArcanePixels"
+        className={`shrink-0 h-auto transition-transform duration-150 group-hover:scale-105 ${logoSizes[size]}`}
+      />
 
-      {/* Brand Wordmark */}
-      {showLabel && (
+      {showLabel && subtitle && (
         <div className="flex flex-col text-left leading-none">
-          <div className="flex items-center gap-1.5">
-            <span className={`tracking-tight font-sans ${titleSizes[size]} ${styles.title} transition-colors`}>
-              Arcane<span className={styles.accent}>Pixels</span>
-              <span className={`font-semibold ${styles.accent}`}>.de</span>
-            </span>
-            <ExternalLink className={`w-3.5 h-3.5 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0 ${styles.linkIcon}`} />
-          </div>
-          {subtitle && (
-            <span className={`text-[10px] sm:text-xs mt-0.5 font-medium tracking-wide uppercase ${styles.sub}`}>
-              {subtitle}
-            </span>
-          )}
+          <span className={`text-[10px] sm:text-xs mt-0.5 font-medium tracking-wide uppercase ${styles.sub}`}>
+            {subtitle}
+          </span>
         </div>
       )}
     </a>

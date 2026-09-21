@@ -203,10 +203,8 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
         <div className="flex justify-center pt-2">
           <ArcanePixelsBrand
             theme="dark"
-            size="md"
-            variant="prominent"
-            subtitle="Software & Tools"
-            className="shadow-xl border-slate-700/90 bg-slate-800/90"
+            size="xl"
+            variant="plain"
           />
         </div>
 
@@ -856,7 +854,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
             <span>Entwickelt von</span>
             <ArcanePixelsBrand
               theme="dark"
-              size="xs"
+              size="sm"
               variant="badge"
             />
           </div>
