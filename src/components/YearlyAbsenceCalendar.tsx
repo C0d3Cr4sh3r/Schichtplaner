@@ -37,7 +37,7 @@ interface YearlyAbsenceCalendarProps {
   onUpdateDB: (updated: DepartmentDatabase) => void;
 }
 
-type StampSelection = AbsenceType | 'eraser';
+type StampSelection = AbsenceType | 'eraser' | null;
 type ViewGranularity = 'month' | 'quarter' | 'year';
 
 export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db, onUpdateDB }) => {
@@ -51,7 +51,9 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth);
   const [viewGranularity, setViewGranularity] = useState<ViewGranularity>('month');
-  const [activeStamp, setActiveStamp] = useState<StampSelection>('urlaub');
+  // Kein Stempel beim Öffnen aktiv, damit ein versehentlicher Klick auf eine Zelle nichts
+  // einträgt, bevor man bewusst einen Stempel gewählt hat.
+  const [activeStamp, setActiveStamp] = useState<StampSelection>(null);
   const [filterRole, setFilterRole] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showHolidays, setShowHolidays] = useState<boolean>(true);
@@ -207,8 +209,10 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
     return groups;
   }, [daysInView]);
 
-  // Quick stamp a single day
+  // Quick stamp a single day — tut nichts, solange kein Stempel bewusst gewählt wurde.
   const handleCellClick = (employeeId: string, dateKey: string) => {
+    if (!activeStamp) return;
+
     const updatedAbsences = applyStampToEmployeeDate(
       db.absences,
       db.departmentCode,
@@ -270,7 +274,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
     const startOfCurrentMonth = formatDateKey(selectedYear, selectedMonth, 1);
     setRangeStartDate(startOfCurrentMonth);
     setRangeEndDate(startOfCurrentMonth);
-    setRangeStamp(activeStamp === 'eraser' ? 'urlaub' : activeStamp);
+    setRangeStamp(activeStamp && activeStamp !== 'eraser' ? activeStamp : 'urlaub');
     setRangeModalOpen(true);
   };
 
@@ -289,7 +293,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       emp.id,
       firstDay,
       lastDay,
-      activeStamp === 'eraser' ? 'urlaub' : activeStamp,
+      activeStamp && activeStamp !== 'eraser' ? activeStamp : 'urlaub',
       `Woche KW ${kw}`
     );
 
@@ -455,7 +459,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                 setRangeEmployeeId(db.employees[0]?.id || '');
                 setRangeStartDate(todayKey);
                 setRangeEndDate(todayKey);
-                setRangeStamp(activeStamp === 'eraser' ? 'urlaub' : activeStamp);
+                setRangeStamp(activeStamp && activeStamp !== 'eraser' ? activeStamp : 'urlaub');
                 setRangeModalOpen(true);
               }}
               className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
@@ -531,7 +535,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                 <button
                   key={type}
                   type="button"
-                  onClick={() => setActiveStamp(type)}
+                  onClick={() => setActiveStamp(isSelected ? null : type)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
                     isSelected
                       ? 'ring-2 ring-blue-600 ring-offset-2 scale-[1.02] ' + cfg.stampBgClass
@@ -557,7 +561,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
             {/* Radiergummi / Eraser */}
             <button
               type="button"
-              onClick={() => setActiveStamp('eraser')}
+              onClick={() => setActiveStamp(activeStamp === 'eraser' ? null : 'eraser')}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
                 activeStamp === 'eraser'
                   ? 'bg-slate-800 text-white border-slate-900 ring-2 ring-slate-800 ring-offset-2'
@@ -572,10 +576,20 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
           </div>
 
           {/* Active Stamp Banner */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 flex items-center justify-between text-xs text-slate-700">
+          <div
+            className={`border rounded-xl px-3 py-2 flex items-center justify-between text-xs ${
+              activeStamp
+                ? 'bg-slate-50 border-slate-200 text-slate-700'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
+            }`}
+          >
             <div className="flex items-center gap-2">
               <span className="font-semibold text-slate-900">Aktiver Stempel:</span>
-              {activeStamp === 'eraser' ? (
+              {!activeStamp ? (
+                <span className="inline-flex items-center gap-1 font-bold text-amber-800">
+                  <HelpCircle className="w-3.5 h-3.5" /> Kein Stempel gewählt
+                </span>
+              ) : activeStamp === 'eraser' ? (
                 <span className="inline-flex items-center gap-1 font-bold text-rose-700">
                   <Eraser className="w-3.5 h-3.5" /> Radierer (Entfernen)
                 </span>
@@ -587,8 +601,13 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                   <span>{ABSENCE_CONFIGS[activeStamp].label}</span>
                 </span>
               )}
-              <span className="text-slate-500 hidden md:inline">
-                — {activeStamp === 'eraser' ? 'Klicken Sie auf Tage, um sie zu leeren.' : ABSENCE_CONFIGS[activeStamp].description}
+              <span className={activeStamp ? 'text-slate-500 hidden md:inline' : 'hidden md:inline'}>
+                —{' '}
+                {!activeStamp
+                  ? 'Klicks auf Tage bewirken nichts. Erst oben einen Stempel wählen.'
+                  : activeStamp === 'eraser'
+                  ? 'Klicken Sie auf Tage, um sie zu leeren.'
+                  : ABSENCE_CONFIGS[activeStamp].description}
               </span>
             </div>
 
