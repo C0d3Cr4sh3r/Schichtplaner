@@ -47,10 +47,18 @@ function addDays(baseYear: number, baseMonth: number, baseDay: number, daysToAdd
   };
 }
 
+// Feiertage für ein Jahr ändern sich nie zur Laufzeit — pro Jahr einmal berechnen und
+// wiederverwenden, statt bei jedem Aufruf (z.B. pro Urlaubstag x pro Mitarbeiter) die
+// komplette Liste inkl. Osterformel neu aufzubauen.
+const holidaysByYearCache = new Map<number, Map<string, PublicHoliday>>();
+
 /**
  * Liefert alle gesetzlichen und regionalen Feiertage für ein bestimmtes Jahr
  */
 export function getHolidaysForYear(year: number): Map<string, PublicHoliday> {
+  const cached = holidaysByYearCache.get(year);
+  if (cached) return cached;
+
   const map = new Map<string, PublicHoliday>();
 
   const add = (m: number, d: number, name: string, shortName: string, isNational = true, region?: string) => {
@@ -117,6 +125,7 @@ export function getHolidaysForYear(year: number): Map<string, PublicHoliday> {
     'SN'
   );
 
+  holidaysByYearCache.set(year, map);
   return map;
 }
 

@@ -29,6 +29,7 @@ import {
   Clock,
   Sparkles,
   CalendarCheck,
+  Flag,
 } from 'lucide-react';
 
 interface YearlyAbsenceCalendarProps {
@@ -393,6 +394,21 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
               <span>Heute</span>
             </button>
 
+            {/* Public Holidays Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowHolidays((v) => !v)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                showHolidays
+                  ? 'border-amber-300 bg-amber-50 text-amber-800'
+                  : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+              }`}
+              title="Gesetzliche Feiertage im Kalender ein-/ausblenden"
+            >
+              <Flag className={`w-3.5 h-3.5 ${showHolidays ? 'text-amber-600' : 'text-slate-400'}`} />
+              <span>Feiertage</span>
+            </button>
+
             {/* Granularity Switcher: Month / Quarter / Full Year */}
             <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-medium">
               <button
@@ -646,11 +662,17 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
 
                 {daysInView.map((d) => {
                   const isToday = d.dateKey === todayKey;
+                  const isHoliday = showHolidays && !!d.holiday;
                   return (
                     <th
                       key={d.dateKey}
+                      title={isHoliday ? d.holiday!.name : undefined}
                       className={`p-1 text-center border-r border-slate-200 font-mono min-w-[28px] sm:min-w-[32px] ${
-                        d.isWeekend ? 'bg-slate-100/70 text-slate-400' : 'bg-white text-slate-800'
+                        isHoliday
+                          ? 'bg-amber-50 text-amber-800'
+                          : d.isWeekend
+                          ? 'bg-slate-100/70 text-slate-400'
+                          : 'bg-white text-slate-800'
                       } ${isToday ? 'bg-blue-50 font-bold' : ''}`}
                     >
                       <div className="text-[9px] uppercase leading-none opacity-70">
@@ -665,6 +687,11 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                       >
                         {d.dayNum}
                       </div>
+                      {isHoliday && (
+                        <div className="text-[8px] leading-none mt-0.5 text-amber-700 truncate max-w-[32px] mx-auto">
+                          {d.holiday!.shortName}
+                        </div>
+                      )}
                     </th>
                   );
                 })}
@@ -737,6 +764,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
 
                         const isToday = d.dateKey === todayKey;
                         const isConflictDay = empConflictDates?.has(d.dateKey);
+                        const isHoliday = showHolidays && !!d.holiday;
 
                         return (
                           <td
@@ -746,6 +774,8 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                             className={`p-0.5 border-r border-slate-200 text-center transition-colors cursor-pointer hover:ring-1 hover:ring-blue-400 ${
                               isConflictDay
                                 ? 'bg-amber-100/60 ring-1 ring-amber-400/80'
+                                : isHoliday
+                                ? 'bg-amber-50/70'
                                 : d.isWeekend
                                 ? 'bg-slate-100/50'
                                 : 'bg-white'
@@ -756,7 +786,11 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                                 : absence
                                 ? `${emp.firstName} ${emp.lastName} • ${d.dateKey}: ${
                                     ABSENCE_CONFIGS[absence.type]?.label || absence.type
-                                  }${absence.note ? ` (${absence.note})` : ''}`
+                                  }${absence.note ? ` (${absence.note})` : ''}${
+                                    isHoliday ? ` • Feiertag: ${d.holiday!.name}` : ''
+                                  }`
+                                : isHoliday
+                                ? `${emp.firstName} ${emp.lastName} • ${d.dateKey}: Feiertag (${d.holiday!.name})`
                                 : `${emp.firstName} ${emp.lastName} • ${d.dateKey} (Klicken zum Stempeln)`
                             }
                           >
@@ -785,7 +819,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                         <div className="flex items-center justify-center gap-1.5">
                           <span
                             className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold"
-                            title={`Urlaub: ${stats.urlaub} Tage`}
+                            title={`Urlaub: ${stats.urlaub} Kalendertage (davon ${stats.urlaubWorkingDays} echte Arbeitstage ohne Wochenenden/Feiertage)`}
                           >
                             U: {stats.urlaub}
                           </span>
