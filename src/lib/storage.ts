@@ -382,7 +382,18 @@ export function verifyAdminPassword(password: string): boolean {
   return password.trim() === 'Industrie2025!' || password.trim() === 'admin123';
 }
 
-export function isDefaultAdminPassword(): boolean {
+export async function isDefaultAdminPasswordAsync(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: '' }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return !!data.isDefault;
+    }
+  } catch {}
   return true;
 }
 

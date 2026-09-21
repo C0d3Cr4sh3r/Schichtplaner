@@ -29,7 +29,7 @@ import {
   verifyDepartmentCodeAsync,
   verifyAdminPasswordAsync,
   setAdminPassword,
-  isDefaultAdminPassword,
+  isDefaultAdminPasswordAsync,
   DEFAULT_ADMIN_PASSWORD,
   createNewDepartmentAsync,
 } from '../lib/storage';
@@ -59,6 +59,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
 
   // Admin new department creation state
   const [newDeptCode, setNewDeptCode] = useState('');
@@ -86,6 +87,12 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   useEffect(() => {
     loadDepartments();
   }, []);
+
+  useEffect(() => {
+    if (viewMode === 'admin-login') {
+      isDefaultAdminPasswordAsync().then(setIsDefaultPassword);
+    }
+  }, [viewMode]);
 
   // Employee: Enter department with code
   const handleEnterWithCode = async (e: React.FormEvent) => {
@@ -393,12 +400,12 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
               </div>
 
               {/* Helpful hint about default password */}
-              {isDefaultAdminPassword() && (
+              {isDefaultPassword && (
                 <div className="p-3 bg-amber-950/60 border border-amber-500/40 rounded-xl text-amber-200 text-xs flex items-start gap-2">
                   <Key className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div>
                     <span className="font-semibold block text-amber-300">Standard-Passwort hinterlegt:</span>
-                    Das Standard-Passwort lautet <code className="bg-amber-900/80 px-1.5 py-0.5 rounded font-bold font-mono text-white">admin123</code>. Sie können es nach dem Einloggen sofort nach Wunsch ändern.
+                    Das Standard-Passwort lautet <code className="bg-amber-900/80 px-1.5 py-0.5 rounded font-bold font-mono text-white">{DEFAULT_ADMIN_PASSWORD}</code>. Sie können es nach dem Einloggen sofort nach Wunsch ändern.
                   </div>
                 </div>
               )}

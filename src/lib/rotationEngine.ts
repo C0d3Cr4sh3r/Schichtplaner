@@ -79,6 +79,14 @@ export function getISOWeek(date: Date): { year: number; kw: number } {
 }
 
 /**
+ * Liefert die Anzahl der ISO-8601-Kalenderwochen eines Jahres (52 oder 53).
+ * Der 28. Dezember liegt immer in der letzten ISO-Woche des Jahres.
+ */
+export function getWeeksInISOYear(year: number): number {
+  return getISOWeek(new Date(Date.UTC(year, 11, 28))).kw;
+}
+
+/**
  * Returns Monday and Sunday Date for a given Year and ISO week
  */
 export function getDateRangeForKW(year: number, kw: number): { start: Date; end: Date; startStr: string; endStr: string } {
@@ -443,8 +451,8 @@ export function generateMultiWeekPlan(
   for (let i = 0; i < safeWeeks; i++) {
     result.push(generateWeekSchedule(db, curYear, curKW));
     curKW++;
-    // Simple 52-week wraparound
-    if (curKW > 52) {
+    // Wraparound am tatsächlichen Jahresende (52 oder 53 ISO-Wochen, je nach Jahr)
+    if (curKW > getWeeksInISOYear(curYear)) {
       curKW = 1;
       curYear++;
     }

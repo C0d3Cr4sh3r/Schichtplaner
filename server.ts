@@ -42,12 +42,22 @@ function getSystemConfig(): SystemConfig {
     adminPasswordPlain: DEFAULT_ADMIN_PASS,
     lastUpdated: new Date().toISOString(),
   };
-  fs.writeFileSync(SYSTEM_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+  writeFileAtomic(SYSTEM_FILE, JSON.stringify(initial, null, 2));
   return initial;
 }
 
 function saveSystemConfig(cfg: SystemConfig): void {
-  fs.writeFileSync(SYSTEM_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+  writeFileAtomic(SYSTEM_FILE, JSON.stringify(cfg, null, 2));
+}
+
+// Schreibt eine Datei atomar (temp-Datei + rename), damit bei einem Absturz
+// mitten im Schreiben (Stromausfall, Prozess-Kill) nie eine leere oder
+// abgeschnittene JSON-Datei zurückbleibt - rename ist auf demselben
+// Dateisystem eine atomare Operation.
+function writeFileAtomic(filePath: string, content: string): void {
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, content, 'utf-8');
+  fs.renameSync(tmpPath, filePath);
 }
 
 function normalizeCode(code: string): string {
@@ -412,8 +422,8 @@ function initializeSeedDataIfEmpty() {
       },
     };
 
-    fs.writeFileSync(getDeptFilePath('FERT-A'), JSON.stringify(seedFERT, null, 2), 'utf-8');
-    fs.writeFileSync(getDeptFilePath('MONT-1'), JSON.stringify(seedMONT, null, 2), 'utf-8');
+    writeFileAtomic(getDeptFilePath('FERT-A'), JSON.stringify(seedFERT, null, 2));
+    writeFileAtomic(getDeptFilePath('MONT-1'), JSON.stringify(seedMONT, null, 2));
     console.log('[Intranet DB] Seeded FERT-A and MONT-1 successfully.');
   }
 }
@@ -426,16 +436,20 @@ initializeSeedDataIfEmpty();
 
 // 1. Health & Server Status (checks local storage & isolation)
 app.get('/api/status', (req: Request, res: Response) => {
-  const depts = fs.readdirSync(DEPT_DIR).filter(f => f.endsWith('.json')).map(f => f.replace('.json', ''));
-  res.json({
-    status: 'online',
-    mode: 'intranet-local-database',
-    cloudConnection: false,
-    externalInternetRequired: false,
-    serverTime: new Date().toISOString(),
-    departmentCount: depts.length,
-    departments: depts,
-  });
+  try {
+    const depts = fs.readdirSync(DEPT_DIR).filter(f => f.endsWith('.json')).map(f => f.replace('.json', ''));
+    res.json({
+      status: 'online',
+      mode: 'intranet-local-database',
+      cloudConnection: false,
+      externalInternetRequired: false,
+      serverTime: new Date().toISOString(),
+      departmentCount: depts.length,
+      departments: depts,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to read department directory', details: err.message });
+  }
 });
 
 // 2. List all registered departments (summary info)
@@ -501,14 +515,27 @@ app.get('/api/departments/:code', (req: Request, res: Response) => {
 app.put('/api/departments/:code', (req: Request, res: Response) => {
   const code = normalizeCode(req.params.code);
   const filePath = getDeptFilePath(code);
+  const body = req.body;
+
+  // Grundlegende Struktur-Prüfung: verhindert, dass ein leerer/kaputter
+  // Request-Body (z.B. abgebrochener Request, Frontend-Bug) die komplette
+  // Abteilung stillschweigend leert.
+  if (
+    !body ||
+    !Array.isArray(body.machines) ||
+    !Array.isArray(body.employees) ||
+    !Array.isArray(body.absences)
+  ) {
+    return res.status(400).json({ error: `Invalid department payload for ${code}: machines, employees and absences must be arrays` });
+  }
+
   try {
-    const body = req.body;
     const updated = {
       ...body,
       departmentCode: code,
       lastModified: new Date().toISOString(),
     };
-    fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf-8');
+    writeFileAtomic(filePath, JSON.stringify(updated, null, 2));
     res.json({ success: true, code, lastModified: updated.lastModified });
   } catch (err: any) {
     res.status(500).json({ error: `Failed to save department ${code}`, details: err.message });
@@ -559,8 +586,19 @@ app.post('/api/departments', (req: Request, res: Response) => {
     },
   };
 
-  fs.writeFileSync(filePath, JSON.stringify(newDept, null, 2), 'utf-8');
-  res.status(201).json(newDept);
+  try {
+    // 'wx' schreibt exklusiv und schlägt fehl, wenn die Datei inzwischen
+    // existiert - schließt die Lücke zwischen der existsSync-Prüfung oben
+    // und diesem Schreibvorgang (zwei fast gleichzeitige Anlage-Requests
+    // für denselben Code können sich so nicht mehr gegenseitig überschreiben).
+    fs.writeFileSync(filePath, JSON.stringify(newDept, null, 2), { encoding: 'utf-8', flag: 'wx' });
+    res.status(201).json(newDept);
+  } catch (err: any) {
+    if (err.code === 'EEXIST') {
+      return res.status(409).json({ error: `Department ${code} already exists` });
+    }
+    res.status(500).json({ error: `Failed to create department ${code}`, details: err.message });
+  }
 });
 
 // 7. Delete Department
