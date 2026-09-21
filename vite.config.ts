@@ -16,7 +16,10 @@ export default defineConfig(() => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Ignore data/ (the server-side JSON database the backend writes on every
+      // save): without this, Vite treats every stamped absence as a source-file change
+      // and force-reloads the page, wiping the current tab/scroll state.
+      watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/data/**'] },
     },
   };
 });
