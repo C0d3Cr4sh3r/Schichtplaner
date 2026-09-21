@@ -114,6 +114,20 @@ export function listRegisteredDepartments(): DepartmentInfo[] {
 /**
  * Loads a department from the central intranet server.
  */
+// Füllt fehlende/kaputte Arrays einer geladenen Abteilung defensiv auf,
+// statt die UI mit "reading 'filter' of undefined" abstürzen zu lassen -
+// z.B. falls eine Abteilungsdatei durch einen früheren Bug oder einen
+// manuellen Eingriff unvollständig ist.
+function normalizeDepartmentDatabase(data: DepartmentDatabase): DepartmentDatabase {
+  return {
+    ...data,
+    machines: Array.isArray(data.machines) ? data.machines : [],
+    employees: Array.isArray(data.employees) ? data.employees : [],
+    absences: Array.isArray(data.absences) ? data.absences : [],
+    manualOverrides: Array.isArray(data.manualOverrides) ? data.manualOverrides : [],
+  };
+}
+
 export async function getDepartmentDBAsync(code: string): Promise<DepartmentDatabase | null> {
   const norm = normalizeCode(code);
   if (!norm) return null;
@@ -121,7 +135,8 @@ export async function getDepartmentDBAsync(code: string): Promise<DepartmentData
   try {
     const res = await fetch(`/api/departments/${norm}`);
     if (res.ok) {
-      const data = (await res.json()) as DepartmentDatabase;
+      const raw = (await res.json()) as DepartmentDatabase;
+      const data = normalizeDepartmentDatabase(raw);
       try {
         localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(data));
       } catch {}
@@ -134,7 +149,7 @@ export async function getDepartmentDBAsync(code: string): Promise<DepartmentData
   // Fallback cache
   try {
     const cached = localStorage.getItem(`${LOCAL_CACHE_PREFIX}${norm}`);
-    if (cached) return JSON.parse(cached);
+    if (cached) return normalizeDepartmentDatabase(JSON.parse(cached));
   } catch {}
 
   return null;
@@ -153,33 +168,59 @@ export function getDepartmentDB(code: string): DepartmentDatabase | null {
   return null;
 }
 
+export type SaveResult =
+  | { status: 'ok'; data: DepartmentDatabase }
+  | { status: 'conflict'; current: DepartmentDatabase }
+  | { status: 'error' };
+
 /**
  * Saves department changes to the central intranet server.
  * Multiple users instantly see updates on their next refresh or poll.
+ *
+ * baseVersion muss die Version sein, auf der die Änderung beruht (also die
+ * zuletzt vom Server gelesene DepartmentDatabase.version). Hat der Server
+ * inzwischen eine neuere Version (weil jemand anderes gespeichert hat),
+ * wird der Save abgelehnt (status: 'conflict') statt die fremde Änderung
+ * zu überschreiben.
  */
-export async function saveDepartmentDBAsync(code: string, data: DepartmentDatabase): Promise<boolean> {
+export async function saveDepartmentDBAsync(code: string, data: DepartmentDatabase): Promise<SaveResult> {
   const norm = normalizeCode(code);
-  const updated: DepartmentDatabase = {
+  const payload = {
     ...data,
     departmentCode: norm,
-    lastModified: new Date().toISOString(),
+    baseVersion: data.version || 0,
   };
-
-  // Cache locally immediately for zero-latency UI
-  try {
-    localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(updated));
-  } catch {}
 
   try {
     const res = await fetch(`/api/departments/${norm}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
+      body: JSON.stringify(payload),
     });
-    return res.ok;
+
+    if (res.status === 409) {
+      const body = await res.json();
+      return { status: 'conflict', current: body.current };
+    }
+
+    if (!res.ok) {
+      return { status: 'error' };
+    }
+
+    const result = await res.json();
+    const saved: DepartmentDatabase = {
+      ...data,
+      departmentCode: norm,
+      version: result.version,
+      lastModified: result.lastModified,
+    };
+    try {
+      localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(saved));
+    } catch {}
+    return { status: 'ok', data: saved };
   } catch (err) {
     console.error(`[Intranet DB] Server save failed for ${norm}:`, err);
-    return false;
+    return { status: 'error' };
   }
 }
 
@@ -329,15 +370,23 @@ export function verifyDepartmentCode(code: string): boolean {
   return list.some((d) => d.code === norm) || getDepartmentDB(norm) !== null;
 }
 
+/**
+ * Rein lesende Variante für den Login-/Lade-Pfad: liefert bei fehlendem
+ * Server- und Cache-Stand eine leere Seed-Struktur nur für die lokale
+ * Anzeige, schreibt sie aber NICHT auf den Server. Ein Server-Ausfall im
+ * ungünstigen Moment (Nutzer lädt neu, während der Server kurz nicht
+ * erreichbar ist und noch kein lokaler Cache existiert) darf eine
+ * bestehende, echte Abteilung nie mit leeren Daten überschreiben - neue
+ * Abteilungen entstehen ausschließlich bewusst über den Admin-Dialog
+ * (createNewDepartmentAsync).
+ */
 export function ensureDepartmentExists(code: string, name?: string): DepartmentDatabase {
   const normCode = normalizeCode(code);
   const existing = getDepartmentDB(normCode);
   if (existing) return existing;
 
   const defaultName = name || `Abteilung ${normCode}`;
-  const seedDB = createSeedDepartmentDatabase(normCode, defaultName);
-  saveDepartmentDB(normCode, seedDB);
-  return seedDB;
+  return createSeedDepartmentDatabase(normCode, defaultName);
 }
 
 export function getDepartmentInfo(code: string): DepartmentInfo | null {
@@ -375,11 +424,9 @@ export async function verifyAdminPasswordAsync(password: string): Promise<boolea
       return !!data.valid;
     }
   } catch {}
-  return password.trim() === 'Industrie2025!' || password.trim() === 'admin123';
-}
-
-export function verifyAdminPassword(password: string): boolean {
-  return password.trim() === 'Industrie2025!' || password.trim() === 'admin123';
+  // Kein Fallback auf ein hartcodiertes Passwort: ist der Server nicht
+  // erreichbar, muss der Login fehlschlagen statt eine Hintertür zu öffnen.
+  return false;
 }
 
 export async function isDefaultAdminPasswordAsync(): Promise<boolean> {
@@ -394,15 +441,6 @@ export async function isDefaultAdminPasswordAsync(): Promise<boolean> {
       return !!data.isDefault;
     }
   } catch {}
-  return true;
-}
-
-export function setAdminPassword(newPassword: string): boolean {
-  fetch('/api/admin/change-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ currentPassword: 'Industrie2025!', newPassword: newPassword.trim() }),
-  }).catch(() => {});
   return true;
 }
 

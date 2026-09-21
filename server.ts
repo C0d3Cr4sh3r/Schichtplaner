@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 
 const app = express();
@@ -30,20 +31,55 @@ interface SystemConfig {
 
 const DEFAULT_ADMIN_PASS = 'Industrie2025!';
 
+// Passwort-Hashing mit Node's eingebautem scrypt (keine externe Dependency
+// nötig - passt zum "alles local, keine Cloud"-Ansatz). Format: salt:hash,
+// beide hex-kodiert.
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPasswordHash(password: string, stored: string): boolean {
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) return false;
+  const candidate = crypto.scryptSync(password, salt, 64);
+  const expected = Buffer.from(hash, 'hex');
+  if (candidate.length !== expected.length) return false;
+  return crypto.timingSafeEqual(candidate, expected);
+}
+
 function getSystemConfig(): SystemConfig {
+  let cfg: SystemConfig | null = null;
   try {
     if (fs.existsSync(SYSTEM_FILE)) {
-      return JSON.parse(fs.readFileSync(SYSTEM_FILE, 'utf-8'));
+      cfg = JSON.parse(fs.readFileSync(SYSTEM_FILE, 'utf-8'));
     }
   } catch (err) {
     console.error('Error reading system.json:', err);
   }
-  const initial: SystemConfig = {
-    adminPasswordPlain: DEFAULT_ADMIN_PASS,
-    lastUpdated: new Date().toISOString(),
-  };
-  writeFileAtomic(SYSTEM_FILE, JSON.stringify(initial, null, 2));
-  return initial;
+
+  if (!cfg) {
+    cfg = {
+      adminPasswordHash: hashPassword(DEFAULT_ADMIN_PASS),
+      lastUpdated: new Date().toISOString(),
+    };
+    writeFileAtomic(SYSTEM_FILE, JSON.stringify(cfg, null, 2));
+    return cfg;
+  }
+
+  // Migration: ältere system.json-Dateien speichern das Passwort noch im
+  // Klartext (adminPasswordPlain). Beim ersten Zugriff danach in einen Hash
+  // umwandeln und das Klartextfeld entfernen.
+  if (!cfg.adminPasswordHash) {
+    const plain = cfg.adminPasswordPlain || DEFAULT_ADMIN_PASS;
+    cfg.adminPasswordHash = hashPassword(plain);
+    delete cfg.adminPasswordPlain;
+    cfg.lastUpdated = new Date().toISOString();
+    writeFileAtomic(SYSTEM_FILE, JSON.stringify(cfg, null, 2));
+  }
+
+  return cfg;
 }
 
 function saveSystemConfig(cfg: SystemConfig): void {
@@ -530,13 +566,41 @@ app.put('/api/departments/:code', (req: Request, res: Response) => {
   }
 
   try {
+    // Optimistisches Locking: der Client schickt die Version mit, auf der
+    // seine Änderung basiert (baseVersion). Weicht sie vom aktuellen
+    // Serverstand ab, hat inzwischen jemand anderes gespeichert - dann wird
+    // abgelehnt (409) statt die fremde Änderung stillschweigend zu
+    // überschreiben. Der Client bekommt den aktuellen Stand gleich mit, um
+    // sofort neu laden zu können.
+    let currentVersion = 0;
+    if (fs.existsSync(filePath)) {
+      try {
+        const current = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        currentVersion = current.version || 0;
+      } catch {
+        // Kaputte bestehende Datei: Version bleibt 0, Konfliktprüfung greift
+        // dann nicht - das Überschreiben einer bereits kaputten Datei ist ok.
+      }
+    }
+
+    const baseVersion = typeof body.baseVersion === 'number' ? body.baseVersion : currentVersion;
+    if (currentVersion > 0 && baseVersion !== currentVersion) {
+      const current = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      return res.status(409).json({
+        error: `Department ${code} was changed by someone else in the meantime`,
+        current,
+      });
+    }
+
+    const { baseVersion: _discard, ...rest } = body;
     const updated = {
-      ...body,
+      ...rest,
       departmentCode: code,
+      version: currentVersion + 1,
       lastModified: new Date().toISOString(),
     };
     writeFileAtomic(filePath, JSON.stringify(updated, null, 2));
-    res.json({ success: true, code, lastModified: updated.lastModified });
+    res.json({ success: true, code, version: updated.version, lastModified: updated.lastModified });
   } catch (err: any) {
     res.status(500).json({ error: `Failed to save department ${code}`, details: err.message });
   }
@@ -617,26 +681,77 @@ app.delete('/api/departments/:code', (req: Request, res: Response) => {
 });
 
 // 8. Admin Password Verification & Change
+// Einfaches Rate-Limiting gegen Brute-Force: pro IP nach 5 Fehlversuchen
+// 30 Sekunden Sperre, Zähler wächst bei weiteren Versuchen während der
+// Sperre nicht unbegrenzt (kein Speicherleck über Zeit, da pro IP nur ein
+// Eintrag gehalten wird).
+const loginAttempts = new Map<string, { failCount: number; lockedUntil: number }>();
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MS = 30_000;
+
+function checkRateLimit(ip: string): { locked: boolean; retryAfterSeconds?: number } {
+  const entry = loginAttempts.get(ip);
+  if (!entry) return { locked: false };
+  if (entry.lockedUntil > Date.now()) {
+    return { locked: true, retryAfterSeconds: Math.ceil((entry.lockedUntil - Date.now()) / 1000) };
+  }
+  return { locked: false };
+}
+
+function recordFailedAttempt(ip: string): void {
+  const entry = loginAttempts.get(ip) || { failCount: 0, lockedUntil: 0 };
+  entry.failCount++;
+  if (entry.failCount >= MAX_FAILED_ATTEMPTS) {
+    entry.lockedUntil = Date.now() + LOCKOUT_MS;
+    entry.failCount = 0;
+  }
+  loginAttempts.set(ip, entry);
+}
+
+function recordSuccessfulAttempt(ip: string): void {
+  loginAttempts.delete(ip);
+}
+
 app.post('/api/admin/verify', (req: Request, res: Response) => {
   const { password } = req.body;
+  const rateLimit = checkRateLimit(req.ip || 'unknown');
+  if (rateLimit.locked) {
+    return res.status(429).json({ error: `Zu viele Fehlversuche. Bitte in ${rateLimit.retryAfterSeconds}s erneut versuchen.` });
+  }
+
   const cfg = getSystemConfig();
-  const isValid = password === (cfg.adminPasswordPlain || DEFAULT_ADMIN_PASS);
+  const isValid = !!cfg.adminPasswordHash && verifyPasswordHash(password || '', cfg.adminPasswordHash);
+  if (isValid) {
+    recordSuccessfulAttempt(req.ip || 'unknown');
+  } else {
+    recordFailedAttempt(req.ip || 'unknown');
+  }
+
   res.json({
     valid: isValid,
-    isDefault: (cfg.adminPasswordPlain || DEFAULT_ADMIN_PASS) === DEFAULT_ADMIN_PASS,
+    isDefault: !!cfg.adminPasswordHash && verifyPasswordHash(DEFAULT_ADMIN_PASS, cfg.adminPasswordHash),
   });
 });
 
 app.post('/api/admin/change-password', (req: Request, res: Response) => {
   const { currentPassword, newPassword } = req.body;
+  const rateLimit = checkRateLimit(req.ip || 'unknown');
+  if (rateLimit.locked) {
+    return res.status(429).json({ error: `Zu viele Fehlversuche. Bitte in ${rateLimit.retryAfterSeconds}s erneut versuchen.` });
+  }
+
   const cfg = getSystemConfig();
-  if (currentPassword !== (cfg.adminPasswordPlain || DEFAULT_ADMIN_PASS)) {
+  const currentValid = !!cfg.adminPasswordHash && verifyPasswordHash(currentPassword || '', cfg.adminPasswordHash);
+  if (!currentValid) {
+    recordFailedAttempt(req.ip || 'unknown');
     return res.status(401).json({ error: 'Aktuelles Passwort ist nicht korrekt.' });
   }
+  recordSuccessfulAttempt(req.ip || 'unknown');
+
   if (!newPassword || newPassword.length < 6) {
     return res.status(400).json({ error: 'Das neue Passwort muss mindestens 6 Zeichen lang sein.' });
   }
-  cfg.adminPasswordPlain = newPassword;
+  cfg.adminPasswordHash = hashPassword(newPassword);
   cfg.lastUpdated = new Date().toISOString();
   saveSystemConfig(cfg);
   res.json({ success: true, isDefault: false });

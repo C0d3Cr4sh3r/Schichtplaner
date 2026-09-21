@@ -96,6 +96,7 @@ export interface DepartmentDatabase {
   departmentName: string; // e.g. "Fertigung & Zerspanung Halle 1"
   createdAt: string;
   lastModified: string;
+  version?: number; // wird vom Server hochgezählt, für Konflikterkennung bei gleichzeitigem Speichern
   machines: Machine[];
   employees: Employee[];
   absences: Absence[];

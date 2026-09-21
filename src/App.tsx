@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { DepartmentDatabase } from './types';
 import {
   getCurrentDepartmentCode,
@@ -18,12 +19,20 @@ import { LayoutEditorAndPrint } from './components/LayoutEditorAndPrint';
 import { DatabaseManagerModal } from './components/DatabaseManagerModal';
 import { ArcanePixelsBrand } from './components/ArcanePixelsBrand';
 
+export type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'error' } | { kind: 'conflict' };
+
 export default function App() {
   const [currentDeptCode, setCurrentDeptCodeState] = useState<string | null>(null);
   const [currentDB, setCurrentDB] = useState<DepartmentDatabase | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('wochenplan');
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [isAdminModeRequested, setIsAdminModeRequested] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: 'idle' });
+  // Ref statt nur State: das Polling-Intervall (siehe unten) greift per
+  // Closure darauf zu und darf currentDB nicht überschreiben, während ein
+  // Save aussteht - sonst überschreibt der Poll-Zyklus eine gerade erst
+  // lokal gesetzte, noch nicht vom Server bestätigte Änderung.
+  const pendingSaveRef = React.useRef(false);
 
   // Initialize department from server and local cache
   useEffect(() => {
@@ -46,14 +55,19 @@ export default function App() {
   useEffect(() => {
     if (!currentDeptCode) return;
     const interval = setInterval(() => {
+      if (pendingSaveRef.current) return; // eigener Save läuft gerade, nicht überschreiben
       getDepartmentDBAsync(currentDeptCode).then((latest) => {
-        if (latest && (!currentDB || latest.lastModified !== currentDB.lastModified)) {
-          setCurrentDB(latest);
-        }
+        if (pendingSaveRef.current) return; // zwischen Fetch-Start und -Ende kann ein Save begonnen haben
+        setCurrentDB((prev) => {
+          if (latest && (!prev || latest.version !== prev.version)) {
+            return latest;
+          }
+          return prev;
+        });
       });
     }, 4000); // 4 seconds intranet sync
     return () => clearInterval(interval);
-  }, [currentDeptCode, currentDB]);
+  }, [currentDeptCode]);
 
   const handleLogin = async (deptCode: string) => {
     setCurrentDeptCodeState(deptCode);
@@ -83,8 +97,27 @@ export default function App() {
 
   const handleUpdateDB = async (updated: DepartmentDatabase) => {
     if (!currentDeptCode) return;
-    setCurrentDB(updated);
-    await saveDepartmentDBAsync(currentDeptCode, updated);
+    setCurrentDB(updated); // optimistisch: UI reagiert sofort
+    pendingSaveRef.current = true;
+    setSaveStatus({ kind: 'saving' });
+
+    const result = await saveDepartmentDBAsync(currentDeptCode, updated);
+    pendingSaveRef.current = false;
+
+    if (result.status === 'ok') {
+      setCurrentDB(result.data);
+      setSaveStatus({ kind: 'idle' });
+    } else if (result.status === 'conflict') {
+      // Jemand anderes hat zwischenzeitlich gespeichert. Statt die fremde
+      // Änderung zu überschreiben oder die eigene blind zu wiederholen
+      // (riskant bei komplexen Edits), übernehmen wir den aktuellen
+      // Serverstand und zeigen einen Hinweis - der letzte eigene Klick muss
+      // dann bewusst wiederholt werden.
+      setCurrentDB(result.current);
+      setSaveStatus({ kind: 'conflict' });
+    } else {
+      setSaveStatus({ kind: 'error' });
+    }
   };
 
   const handleImportSuccess = async (code: string) => {
@@ -108,6 +141,50 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+      {/* Save-Status: erscheint nur bei Fehler/Konflikt, damit eine
+          gescheiterte oder verworfene Änderung nicht unbemerkt bleibt. */}
+      {(saveStatus.kind === 'error' || saveStatus.kind === 'conflict') && (
+        <div className="fixed top-4 right-4 z-50 max-w-sm no-print">
+          <div
+            className={`rounded-xl border shadow-lg px-4 py-3 flex items-start gap-2.5 text-sm ${
+              saveStatus.kind === 'error'
+                ? 'bg-red-50 border-red-300 text-red-800'
+                : 'bg-amber-50 border-amber-300 text-amber-800'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              {saveStatus.kind === 'error' ? (
+                <>
+                  <span className="font-semibold block">Speichern fehlgeschlagen</span>
+                  Die letzte Änderung konnte nicht gespeichert werden. Bitte Verbindung prüfen und erneut versuchen.
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold block">Gleichzeitige Änderung erkannt</span>
+                  Jemand anderes hat diese Abteilung gerade gespeichert. Ihre letzte Änderung wurde nicht übernommen — der aktuelle Stand wurde geladen, bitte bei Bedarf erneut eintragen.
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSaveStatus({ kind: 'idle' })}
+              className="text-xs underline opacity-70 hover:opacity-100 cursor-pointer shrink-0"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+      {saveStatus.kind === 'saving' && (
+        <div className="fixed top-4 right-4 z-50 no-print">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2 flex items-center gap-2 text-xs text-slate-500">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            Speichert...
+          </div>
+        </div>
+      )}
+
       {/* Navigation Header */}
       <HeaderNav
         db={currentDB}

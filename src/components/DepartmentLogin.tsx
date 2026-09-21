@@ -28,7 +28,6 @@ import {
   deleteDepartmentAsync,
   verifyDepartmentCodeAsync,
   verifyAdminPasswordAsync,
-  setAdminPassword,
   isDefaultAdminPasswordAsync,
   DEFAULT_ADMIN_PASSWORD,
   createNewDepartmentAsync,

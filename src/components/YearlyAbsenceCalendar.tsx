@@ -69,6 +69,18 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   // Mouse drag selection state
   const isMouseDownRef = useRef(false);
   const dragEmployeeIdRef = useRef<string | null>(null);
+  // Während eines Drags werden Stempel lokal gesammelt (State für sofortige
+  // visuelle Rückmeldung + Ref als Sync-Zugriff in den Maus-Handlern) und
+  // erst bei mouseUp in EINEM Save geschickt, statt pro überstrichener
+  // Zelle einen eigenen Server-Request auszulösen. Verhindert, dass beim
+  // schnellen Ziehen über mehrere Tage viele parallele PUTs entstehen, die
+  // sich gegenseitig überholen können (letzte Server-Antwort statt letzte
+  // tatsächliche Aktion gewinnt) - ohne dabei die bisherige Live-Vorschau
+  // beim Ziehen zu verlieren.
+  const isDraggingRef = useRef(false);
+  const dragAbsencesRef = useRef(db.absences);
+  const [dragPreviewAbsences, setDragPreviewAbsences] = useState<typeof db.absences | null>(null);
+  const displayAbsences = dragPreviewAbsences ?? db.absences;
 
   // Filtered employees
   const employees = useMemo(() => {
@@ -210,16 +222,25 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   }, [daysInView]);
 
   // Quick stamp a single day — tut nichts, solange kein Stempel bewusst gewählt wurde.
+  // Während eines Drags (isDraggingRef) wird nur lokal gesammelt (dragAbsencesRef)
+  // und nicht gespeichert - das passiert gebündelt in handleMouseUp.
   const handleCellClick = (employeeId: string, dateKey: string) => {
     if (!activeStamp) return;
 
+    const sourceAbsences = isDraggingRef.current ? dragAbsencesRef.current : db.absences;
     const updatedAbsences = applyStampToEmployeeDate(
-      db.absences,
+      sourceAbsences,
       db.departmentCode,
       employeeId,
       dateKey,
       activeStamp
     );
+
+    if (isDraggingRef.current) {
+      dragAbsencesRef.current = updatedAbsences;
+      setDragPreviewAbsences(updatedAbsences);
+      return;
+    }
 
     onUpdateDB({
       ...db,
@@ -237,12 +258,26 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   const handleCellMouseDown = (employeeId: string, dateKey: string) => {
     isMouseDownRef.current = true;
     dragEmployeeIdRef.current = employeeId;
+    isDraggingRef.current = true;
+    dragAbsencesRef.current = db.absences;
     handleCellClick(employeeId, dateKey);
   };
 
   const handleMouseUp = () => {
     isMouseDownRef.current = false;
     dragEmployeeIdRef.current = null;
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      const finalAbsences = dragAbsencesRef.current;
+      setDragPreviewAbsences(null);
+      // Nur speichern, wenn sich während des Drags tatsächlich etwas geändert hat.
+      if (finalAbsences !== db.absences) {
+        onUpdateDB({
+          ...db,
+          absences: finalAbsences,
+        });
+      }
+    }
   };
 
   // Quick range stamp submission
@@ -304,11 +339,13 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   };
 
   // Calculate day absence totals across department (for warning/capacity indicator)
+  // Nutzt displayAbsences, damit Zähler/Konflikte während eines Drags live
+  // mitgehen statt erst nach dem Loslassen zu springen.
   const dayAbsenceCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     daysInView.forEach((d) => {
       let count = 0;
-      db.absences.forEach((a) => {
+      displayAbsences.forEach((a) => {
         if (d.dateKey >= a.startDate && d.dateKey <= a.endDate) {
           count++;
         }
@@ -316,12 +353,12 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       counts[d.dateKey] = count;
     });
     return counts;
-  }, [daysInView, db.absences]);
+  }, [daysInView, displayAbsences]);
 
   // Fast lookup for machine vacation conflicts: Map<employeeId, Set<conflictDateStr>>
   const employeeConflictDatesMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
-    const conflicts = detectMachineVacationConflicts(db.employees, db.machines, db.absences);
+    const conflicts = detectMachineVacationConflicts(db.employees, db.machines, displayAbsences);
     for (const conf of conflicts) {
       for (const empItem of conf.employees) {
         if (!map.has(empItem.employee.id)) {
@@ -335,7 +372,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       }
     }
     return map;
-  }, [db.employees, db.machines, db.absences]);
+  }, [db.employees, db.machines, displayAbsences]);
 
   return (
     <div className="space-y-4" onMouseUp={handleMouseUp}>
@@ -731,7 +768,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                 </tr>
               ) : (
                 employees.map((emp) => {
-                  const stats = getEmployeeAnnualStats(db.absences, emp.id, selectedYear);
+                  const stats = getEmployeeAnnualStats(displayAbsences, emp.id, selectedYear);
                   const empConflictDates = employeeConflictDatesMap.get(emp.id);
                   const hasAnyConflict = empConflictDates && empConflictDates.size > 0;
 
@@ -774,7 +811,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                       {/* Day Cells */}
                       {daysInView.map((d) => {
                         // Check if employee has absence on this day
-                        const absence = db.absences.find(
+                        const absence = displayAbsences.find(
                           (a) =>
                             a.employeeId === emp.id &&
                             d.dateKey >= a.startDate &&
