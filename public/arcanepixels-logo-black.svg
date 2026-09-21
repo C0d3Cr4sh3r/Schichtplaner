@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 90" width="100%" height="100%">
+  <!-- ArcanePixels Monochrome Black Vector Logo -->
+  <rect x="5" y="5" width="80" height="80" rx="20" fill="#000000" />
+  <text x="45" y="56" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="40" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="-1">AP</text>
+  
+  <text x="105" y="54" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="38" font-weight="800" fill="#000000" letter-spacing="-1">ArcanePixels</text>
+  <text x="345" y="54" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="700" fill="#000000">.de</text>
+  <text x="106" y="74" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#333333" letter-spacing="1">SOFTWARE &amp; WERKZEUGE</text>
+</svg>
