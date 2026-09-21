@@ -97,6 +97,13 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                 <span>Admin</span>
               </button>
             )}
+            <span
+              className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-medium"
+              title="Alle Daten liegen sicher auf dem internen Firmen-Server im Intranet. Kein Byte verlässt das Netzwerk."
+            >
+              <Database className="w-3 h-3 text-emerald-600" />
+              <span>Intranet-DB</span>
+            </span>
           </div>
         </div>
 

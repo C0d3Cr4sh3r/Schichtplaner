@@ -22,15 +22,16 @@ import {
 } from 'lucide-react';
 import {
   listRegisteredDepartments,
+  listRegisteredDepartmentsAsync,
   DepartmentInfo,
   setCurrentDepartmentCode,
-  deleteDepartment,
-  verifyDepartmentCode,
-  verifyAdminPassword,
+  deleteDepartmentAsync,
+  verifyDepartmentCodeAsync,
+  verifyAdminPasswordAsync,
   setAdminPassword,
   isDefaultAdminPassword,
   DEFAULT_ADMIN_PASSWORD,
-  createNewDepartment,
+  createNewDepartmentAsync,
 } from '../lib/storage';
 import { ArcanePixelsBrand } from './ArcanePixelsBrand';
 
@@ -77,8 +78,8 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   // Copy feedback state
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  const loadDepartments = () => {
-    const list = listRegisteredDepartments();
+  const loadDepartments = async () => {
+    const list = await listRegisteredDepartmentsAsync();
     setDepartments(list);
   };
 
@@ -87,7 +88,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   }, []);
 
   // Employee: Enter department with code
-  const handleEnterWithCode = (e: React.FormEvent) => {
+  const handleEnterWithCode = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = deptCodeInput.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     if (!cleanCode) {
@@ -95,7 +96,8 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
       return;
     }
 
-    if (!verifyDepartmentCode(cleanCode)) {
+    const isValid = await verifyDepartmentCodeAsync(cleanCode);
+    if (!isValid) {
       setEntranceError(
         `Keine Abteilung mit dem Kürzel „${cleanCode}“ gefunden. Bitte prüfen Sie das Kürzel, das Ihnen mitgeteilt wurde, oder fragen Sie Ihre Schichtleitung.`
       );
@@ -108,21 +110,22 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   };
 
   // Admin: Authenticate
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (verifyAdminPassword(adminPasswordInput)) {
+    const isValid = await verifyAdminPasswordAsync(adminPasswordInput);
+    if (isValid) {
       setIsAdminAuthenticated(true);
       setViewMode('admin-panel');
       setAdminAuthError(null);
       setAdminPasswordInput('');
-      loadDepartments();
+      await loadDepartments();
     } else {
       setAdminAuthError('Ungültiges Administrator-Passwort. Bitte erneut versuchen.');
     }
   };
 
   // Admin: Create new department
-  const handleCreateDepartment = (e: React.FormEvent) => {
+  const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = newDeptCode.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     if (!cleanCode) {
@@ -130,14 +133,15 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
       return;
     }
 
-    if (verifyDepartmentCode(cleanCode)) {
+    const exists = await verifyDepartmentCodeAsync(cleanCode);
+    if (exists) {
       setCreationError(`Eine Abteilung mit dem Kürzel „${cleanCode}“ existiert bereits.`);
       return;
     }
 
     setCreationError(null);
-    createNewDepartment(cleanCode, newDeptName.trim() || undefined, newDeptTemplate);
-    loadDepartments();
+    await createNewDepartmentAsync(cleanCode, newDeptName.trim() || undefined, newDeptTemplate);
+    await loadDepartments();
     setCreationSuccess(cleanCode);
     setNewDeptCode('');
     setNewDeptName('');
@@ -149,13 +153,8 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
     setPasswordChangeError(null);
     setPasswordChangeSuccess(null);
 
-    if (!verifyAdminPassword(oldPassword)) {
-      setPasswordChangeError('Das aktuelle Passwort ist nicht korrekt.');
-      return;
-    }
-
-    if (newPassword.length < 4) {
-      setPasswordChangeError('Das neue Passwort muss mindestens 4 Zeichen lang sein.');
+    if (newPassword.length < 6) {
+      setPasswordChangeError('Das neue Passwort muss mindestens 6 Zeichen lang sein.');
       return;
     }
 
@@ -164,27 +163,37 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
       return;
     }
 
-    const success = setAdminPassword(newPassword);
-    if (success) {
-      setPasswordChangeSuccess('Admin-Passwort wurde erfolgreich geändert! Bitte gut notieren.');
-      setOldPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setTimeout(() => setShowPasswordChange(false), 3500);
-    } else {
-      setPasswordChangeError('Fehler beim Speichern des neuen Passworts.');
-    }
+    fetch('/api/admin/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: oldPassword, newPassword }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          setPasswordChangeSuccess('Admin-Passwort wurde erfolgreich geändert! Bitte gut notieren.');
+          setOldPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setTimeout(() => setShowPasswordChange(false), 3500);
+        } else {
+          const data = await res.json();
+          setPasswordChangeError(data.error || 'Fehler beim Ändern des Passworts.');
+        }
+      })
+      .catch(() => {
+        setPasswordChangeError('Server nicht erreichbar.');
+      });
   };
 
   // Delete department (admin only)
-  const handleDeleteDepartment = (code: string) => {
+  const handleDeleteDepartment = async (code: string) => {
     if (
       confirm(
         `Sind Sie sicher, dass Sie die Abteilung „${code}“ unwiderruflich löschen möchten? Alle Schichten, Maschinen und Mitarbeiter dieser Abteilung werden entfernt.`
       )
     ) {
-      deleteDepartment(code);
-      loadDepartments();
+      await deleteDepartmentAsync(code);
+      await loadDepartments();
     }
   };
 
@@ -242,7 +251,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
               </div>
               <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1 rounded-full">
                 <Database className="w-3.5 h-3.5" />
-                Geschützte Datenbank
+                Lokale Intranet-Datenbank (On-Premise)
               </span>
             </div>
 

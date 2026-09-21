@@ -1,4 +1,5 @@
 import { Absence, AbsenceType } from '../types';
+import { isWorkingDay } from './holidayUtils';
 
 export interface AbsenceTypeConfig {
   type: AbsenceType;
@@ -323,14 +324,17 @@ export function applyRangeStampToEmployee(
 
 /**
  * Calculate annual statistics for an employee (total days per absence type in a year)
+ * Urlaub and Zeitausgleich count actual working days (excluding weekends and legal holidays),
+ * while sickness/karenz can reflect calendar days.
  */
 export function getEmployeeAnnualStats(
   absences: Absence[],
   employeeId: string,
   year: number
-): Record<AbsenceType, number> {
-  const stats: Record<AbsenceType, number> = {
+): Record<AbsenceType, number> & { urlaubWorkingDays: number } {
+  const stats: Record<AbsenceType, number> & { urlaubWorkingDays: number } = {
     urlaub: 0,
+    urlaubWorkingDays: 0,
     krank: 0,
     karenz: 0,
     zeitausgleich: 0,
@@ -346,13 +350,20 @@ export function getEmployeeAnnualStats(
   );
 
   empAbs.forEach((a) => {
-    const s = a.startDate < yearStart ? yearStart : a.startDate;
+    let curr = a.startDate < yearStart ? yearStart : a.startDate;
     const e = a.endDate > yearEnd ? yearEnd : a.endDate;
-    const d1 = parseISODate(s);
-    const d2 = parseISODate(e);
-    const diff = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    if (stats[a.type] !== undefined) {
-      stats[a.type] += diff;
+
+    while (curr <= e) {
+      if (stats[a.type] !== undefined) {
+        stats[a.type] += 1;
+      }
+      // For vacation, also track working days (not weekend, not legal holiday)
+      if (a.type === 'urlaub') {
+        if (isWorkingDay(curr)) {
+          stats.urlaubWorkingDays += 1;
+        }
+      }
+      curr = addDaysToDateStr(curr, 1);
     }
   });
 

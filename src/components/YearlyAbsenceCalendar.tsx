@@ -13,6 +13,7 @@ import {
   detectMachineVacationConflicts,
 } from '../lib/absenceUtils';
 import { getISOWeek } from '../lib/rotationEngine';
+import { getHolidayForDate, getHolidaysForYear, countVacationWorkingDays, PublicHoliday } from '../lib/holidayUtils';
 import { VacationConflictAlertPanel } from './VacationConflictAlertPanel';
 import {
   ChevronLeft,
@@ -52,6 +53,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   const [activeStamp, setActiveStamp] = useState<StampSelection>('urlaub');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showHolidays, setShowHolidays] = useState<boolean>(true);
 
   // Range stamp modal state
   const [rangeModalOpen, setRangeModalOpen] = useState(false);
@@ -90,6 +92,8 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
 
   // Compute days to display based on view granularity
   const daysInView = useMemo(() => {
+    const holidaysMap = getHolidaysForYear(selectedYear);
+
     const days: {
       dateKey: string;
       dayNum: number;
@@ -99,27 +103,34 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       monthIndex: number;
       monthName: string;
       kw: number;
+      holiday?: PublicHoliday;
     }[] = [];
 
     const weekdaysDe = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
+    const createDayObj = (year: number, m: number, d: number) => {
+      const dateKey = formatDateKey(year, m, d);
+      const dt = new Date(year, m, d);
+      const dow = dt.getDay();
+      const iso = getISOWeek(dt);
+      const holiday = holidaysMap.get(dateKey);
+      return {
+        dateKey,
+        dayNum: d,
+        dayOfWeek: dow,
+        weekdayShort: weekdaysDe[dow],
+        isWeekend: dow === 0 || dow === 6,
+        monthIndex: m,
+        monthName: MONTH_SHORT_DE[m],
+        kw: iso.kw,
+        holiday,
+      };
+    };
+
     if (viewGranularity === 'month') {
       const numDays = new Date(selectedYear, selectedMonth + 1, 0).getDate();
       for (let d = 1; d <= numDays; d++) {
-        const dateKey = formatDateKey(selectedYear, selectedMonth, d);
-        const dt = new Date(selectedYear, selectedMonth, d);
-        const dow = dt.getDay();
-        const iso = getISOWeek(dt);
-        days.push({
-          dateKey,
-          dayNum: d,
-          dayOfWeek: dow,
-          weekdayShort: weekdaysDe[dow],
-          isWeekend: dow === 0 || dow === 6,
-          monthIndex: selectedMonth,
-          monthName: MONTH_SHORT_DE[selectedMonth],
-          kw: iso.kw,
-        });
+        days.push(createDayObj(selectedYear, selectedMonth, d));
       }
     } else if (viewGranularity === 'quarter') {
       // 3 months around current quarter
@@ -127,20 +138,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       for (let m = quarterStartMonth; m < quarterStartMonth + 3; m++) {
         const numDays = new Date(selectedYear, m + 1, 0).getDate();
         for (let d = 1; d <= numDays; d++) {
-          const dateKey = formatDateKey(selectedYear, m, d);
-          const dt = new Date(selectedYear, m, d);
-          const dow = dt.getDay();
-          const iso = getISOWeek(dt);
-          days.push({
-            dateKey,
-            dayNum: d,
-            dayOfWeek: dow,
-            weekdayShort: weekdaysDe[dow],
-            isWeekend: dow === 0 || dow === 6,
-            monthIndex: m,
-            monthName: MONTH_SHORT_DE[m],
-            kw: iso.kw,
-          });
+          days.push(createDayObj(selectedYear, m, d));
         }
       }
     } else {
@@ -148,20 +146,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       for (let m = 0; m < 12; m++) {
         const numDays = new Date(selectedYear, m + 1, 0).getDate();
         for (let d = 1; d <= numDays; d++) {
-          const dateKey = formatDateKey(selectedYear, m, d);
-          const dt = new Date(selectedYear, m, d);
-          const dow = dt.getDay();
-          const iso = getISOWeek(dt);
-          days.push({
-            dateKey,
-            dayNum: d,
-            dayOfWeek: dow,
-            weekdayShort: weekdaysDe[dow],
-            isWeekend: dow === 0 || dow === 6,
-            monthIndex: m,
-            monthName: MONTH_SHORT_DE[m],
-            kw: iso.kw,
-          });
+          days.push(createDayObj(selectedYear, m, d));
         }
       }
     }

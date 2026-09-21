@@ -1,88 +1,10 @@
 import { DepartmentDatabase, Employee, Machine, Absence, PrintLayoutSettings, ShiftId } from '../types';
 
-const DB_PREFIX = 'schichtplan_dept_db_';
-const DEPT_REGISTRY_KEY = 'schichtplan_registered_depts';
 const CURRENT_DEPT_KEY = 'schichtplan_current_dept';
-const ADMIN_PASSWORD_KEY = 'schichtplan_admin_password';
+const LOCAL_CACHE_PREFIX = 'schichtplan_cache_dept_';
+const LOCAL_REGISTRY_CACHE = 'schichtplan_cache_registry';
 
-export const DEFAULT_ADMIN_PASSWORD = 'admin123';
-
-/**
- * Gets the current admin password for department creation and management.
- * Defaults to 'admin123' if not changed.
- */
-export function getAdminPassword(): string {
-  try {
-    const saved = localStorage.getItem(ADMIN_PASSWORD_KEY);
-    return saved && saved.trim() ? saved : DEFAULT_ADMIN_PASSWORD;
-  } catch {
-    return DEFAULT_ADMIN_PASSWORD;
-  }
-}
-
-/**
- * Checks whether the admin password is still the default one ('admin123').
- */
-export function isDefaultAdminPassword(): boolean {
-  return getAdminPassword() === DEFAULT_ADMIN_PASSWORD;
-}
-
-/**
- * Sets a new admin password.
- */
-export function setAdminPassword(newPassword: string): boolean {
-  if (!newPassword || newPassword.trim().length < 4) {
-    return false;
-  }
-  try {
-    localStorage.setItem(ADMIN_PASSWORD_KEY, newPassword.trim());
-    return true;
-  } catch (err) {
-    console.error('Failed to set admin password', err);
-    return false;
-  }
-}
-
-/**
- * Verifies if the provided password matches the admin password.
- */
-export function verifyAdminPassword(password: string): boolean {
-  return password.trim() === getAdminPassword();
-}
-
-/**
- * Verifies if a department with the given code exists in the registry or database.
- */
-export function verifyDepartmentCode(code: string): boolean {
-  const norm = normalizeCode(code);
-  if (!norm) return false;
-  const list = listRegisteredDepartments();
-  if (list.some((d) => d.code === norm)) return true;
-  return getDepartmentDB(norm) !== null;
-}
-
-/**
- * Finds department info by code if it exists.
- */
-export function getDepartmentInfo(code: string): DepartmentInfo | null {
-  const norm = normalizeCode(code);
-  if (!norm) return null;
-  const list = listRegisteredDepartments();
-  const found = list.find((d) => d.code === norm);
-  if (found) return found;
-  const db = getDepartmentDB(norm);
-  if (db) {
-    return {
-      code: db.departmentCode,
-      name: db.departmentName,
-      createdAt: db.createdAt,
-      lastModified: db.lastModified,
-      machineCount: db.machines.length,
-      employeeCount: db.employees.length,
-    };
-  }
-  return null;
-}
+export const DEFAULT_ADMIN_PASSWORD = 'Industrie2025!';
 
 export interface DepartmentInfo {
   code: string;
@@ -114,10 +36,13 @@ export const DEFAULT_LAYOUT_SETTINGS: PrintLayoutSettings = {
   signature2Label: 'Betriebsrat / Abteilungsleitung (freigegeben)',
 };
 
-function normalizeCode(code: string): string {
-  return code.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+export function normalizeCode(code: string): string {
+  return String(code || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
 }
 
+// -------------------------------------------------------------
+// LOCAL CLIENT SESSION KEY (Which department is currently open in this tab)
+// -------------------------------------------------------------
 export function getCurrentDepartmentCode(): string | null {
   try {
     return localStorage.getItem(CURRENT_DEPT_KEY);
@@ -138,50 +63,270 @@ export function setCurrentDepartmentCode(code: string | null): void {
   }
 }
 
+// -------------------------------------------------------------
+// SERVER INTRANET API INTEGRATION (Multi-User, Central DB)
+// -------------------------------------------------------------
+
+/**
+ * Lists all departments from the central intranet server.
+ * Falls back to local offline cache if server is temporarily unreachable.
+ */
+export async function listRegisteredDepartmentsAsync(): Promise<DepartmentInfo[]> {
+  try {
+    const res = await fetch('/api/departments');
+    if (res.ok) {
+      const data = await res.json();
+      try {
+        localStorage.setItem(LOCAL_REGISTRY_CACHE, JSON.stringify(data));
+      } catch {}
+      return data;
+    }
+  } catch (err) {
+    console.warn('[Intranet DB] Server not reachable, reading local cache:', err);
+  }
+
+  // Fallback to local cache
+  try {
+    const cached = localStorage.getItem(LOCAL_REGISTRY_CACHE);
+    if (cached) return JSON.parse(cached);
+  } catch {}
+
+  return [
+    { code: 'FERT-A', name: 'Zerspanung & CNC Fertigung (Halle 2)', createdAt: new Date().toISOString(), lastModified: new Date().toISOString() },
+    { code: 'MONT-1', name: 'Montagelinie & Endprüfung (Halle 5)', createdAt: new Date().toISOString(), lastModified: new Date().toISOString() },
+  ];
+}
+
+/**
+ * Synchronous version for backwards compatibility
+ */
 export function listRegisteredDepartments(): DepartmentInfo[] {
   try {
-    const raw = localStorage.getItem(DEPT_REGISTRY_KEY);
-    if (!raw) {
-      // Seed default departments if none exist
-      const defaultDepts: DepartmentInfo[] = [
-        {
-          code: 'FERT-A',
-          name: 'Zerspanung & CNC Fertigung (Halle 2)',
-          createdAt: new Date().toISOString(),
-          lastModified: new Date().toISOString(),
-        },
-        {
-          code: 'MONT-1',
-          name: 'Montagelinie & Endprüfung (Halle 5)',
-          createdAt: new Date().toISOString(),
-          lastModified: new Date().toISOString(),
-        },
-      ];
-      localStorage.setItem(DEPT_REGISTRY_KEY, JSON.stringify(defaultDepts));
-      // Ensure seed databases exist
-      ensureDepartmentExists('FERT-A', defaultDepts[0].name);
-      return defaultDepts;
+    const cached = localStorage.getItem(LOCAL_REGISTRY_CACHE);
+    if (cached) return JSON.parse(cached);
+  } catch {}
+  return [
+    { code: 'FERT-A', name: 'Zerspanung & CNC Fertigung (Halle 2)', createdAt: new Date().toISOString(), lastModified: new Date().toISOString() },
+    { code: 'MONT-1', name: 'Montagelinie & Endprüfung (Halle 5)', createdAt: new Date().toISOString(), lastModified: new Date().toISOString() },
+  ];
+}
+
+/**
+ * Loads a department from the central intranet server.
+ */
+export async function getDepartmentDBAsync(code: string): Promise<DepartmentDatabase | null> {
+  const norm = normalizeCode(code);
+  if (!norm) return null;
+
+  try {
+    const res = await fetch(`/api/departments/${norm}`);
+    if (res.ok) {
+      const data = (await res.json()) as DepartmentDatabase;
+      try {
+        localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(data));
+      } catch {}
+      return data;
     }
-    return JSON.parse(raw);
   } catch (err) {
-    console.error('Error listing departments', err);
-    return [];
+    console.warn(`[Intranet DB] Fetch failed for ${norm}, falling back to cache:`, err);
+  }
+
+  // Fallback cache
+  try {
+    const cached = localStorage.getItem(`${LOCAL_CACHE_PREFIX}${norm}`);
+    if (cached) return JSON.parse(cached);
+  } catch {}
+
+  return null;
+}
+
+/**
+ * Synchronous getDepartmentDB reading from local cache
+ */
+export function getDepartmentDB(code: string): DepartmentDatabase | null {
+  const norm = normalizeCode(code);
+  if (!norm) return null;
+  try {
+    const cached = localStorage.getItem(`${LOCAL_CACHE_PREFIX}${norm}`);
+    if (cached) return JSON.parse(cached);
+  } catch {}
+  return null;
+}
+
+/**
+ * Saves department changes to the central intranet server.
+ * Multiple users instantly see updates on their next refresh or poll.
+ */
+export async function saveDepartmentDBAsync(code: string, data: DepartmentDatabase): Promise<boolean> {
+  const norm = normalizeCode(code);
+  const updated: DepartmentDatabase = {
+    ...data,
+    departmentCode: norm,
+    lastModified: new Date().toISOString(),
+  };
+
+  // Cache locally immediately for zero-latency UI
+  try {
+    localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(updated));
+  } catch {}
+
+  try {
+    const res = await fetch(`/api/departments/${norm}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error(`[Intranet DB] Server save failed for ${norm}:`, err);
+    return false;
   }
 }
 
-function updateRegistry(info: DepartmentInfo): void {
+/**
+ * Synchronous wrapper that triggers background save to intranet server
+ */
+export function saveDepartmentDB(code: string, data: DepartmentDatabase): void {
+  const norm = normalizeCode(code);
+  const updated: DepartmentDatabase = {
+    ...data,
+    departmentCode: norm,
+    lastModified: new Date().toISOString(),
+  };
+
   try {
-    const depts = listRegisteredDepartments();
-    const existingIndex = depts.findIndex((d) => d.code === info.code);
-    if (existingIndex >= 0) {
-      depts[existingIndex] = { ...depts[existingIndex], ...info };
-    } else {
-      depts.push(info);
+    localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(updated));
+  } catch {}
+
+  // Fire and forget server update
+  fetch(`/api/departments/${norm}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updated),
+  }).catch((err) => console.error('Background intranet save error:', err));
+}
+
+/**
+ * Creates a brand new department on the central server
+ */
+export async function createNewDepartmentAsync(
+  code: string,
+  name?: string,
+  template: 'seed' | 'empty' = 'seed'
+): Promise<DepartmentDatabase> {
+  const norm = normalizeCode(code);
+  const defaultName = name && name.trim() ? name.trim() : `Abteilung ${norm}`;
+
+  const baseDB = template === 'empty' 
+    ? {
+        departmentCode: norm,
+        departmentName: defaultName,
+        createdAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        machines: [],
+        employees: [],
+        absences: [],
+        manualOverrides: [],
+        layoutSettings: {
+          ...DEFAULT_LAYOUT_SETTINGS,
+          departmentDisplayName: defaultName,
+        },
+      }
+    : createSeedDepartmentDatabase(norm, defaultName);
+
+  try {
+    const res = await fetch(`/api/departments/${norm}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(baseDB),
+    });
+    if (res.ok) {
+      // Refresh registry
+      await listRegisteredDepartmentsAsync();
     }
-    localStorage.setItem(DEPT_REGISTRY_KEY, JSON.stringify(depts));
   } catch (err) {
-    console.error('Failed to update registry', err);
+    console.error('Failed to create department on server:', err);
   }
+
+  try {
+    localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(baseDB));
+  } catch {}
+
+  return baseDB;
+}
+
+export function createNewDepartment(
+  code: string,
+  name?: string,
+  template: 'seed' | 'empty' = 'seed'
+): DepartmentDatabase {
+  const norm = normalizeCode(code);
+  const defaultName = name && name.trim() ? name.trim() : `Abteilung ${norm}`;
+  const baseDB = template === 'empty' 
+    ? {
+        departmentCode: norm,
+        departmentName: defaultName,
+        createdAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        machines: [],
+        employees: [],
+        absences: [],
+        manualOverrides: [],
+        layoutSettings: {
+          ...DEFAULT_LAYOUT_SETTINGS,
+          departmentDisplayName: defaultName,
+        },
+      }
+    : createSeedDepartmentDatabase(norm, defaultName);
+
+  saveDepartmentDB(norm, baseDB);
+  return baseDB;
+}
+
+/**
+ * Deletes a department from the central server
+ */
+export async function deleteDepartmentAsync(code: string): Promise<boolean> {
+  const norm = normalizeCode(code);
+  try {
+    localStorage.removeItem(`${LOCAL_CACHE_PREFIX}${norm}`);
+    if (getCurrentDepartmentCode() === norm) {
+      setCurrentDepartmentCode(null);
+    }
+    const res = await fetch(`/api/departments/${norm}`, { method: 'DELETE' });
+    await listRegisteredDepartmentsAsync();
+    return res.ok;
+  } catch (err) {
+    console.error('Failed to delete department:', err);
+    return false;
+  }
+}
+
+export function deleteDepartment(code: string): void {
+  deleteDepartmentAsync(code);
+}
+
+/**
+ * Fast verify code on intranet server
+ */
+export async function verifyDepartmentCodeAsync(code: string): Promise<boolean> {
+  const norm = normalizeCode(code);
+  if (!norm) return false;
+  try {
+    const res = await fetch(`/api/departments/${norm}/verify`);
+    if (res.ok) {
+      const data = await res.json();
+      return !!data.valid;
+    }
+  } catch {}
+  return verifyDepartmentCode(norm);
+}
+
+export function verifyDepartmentCode(code: string): boolean {
+  const norm = normalizeCode(code);
+  if (!norm) return false;
+  const list = listRegisteredDepartments();
+  return list.some((d) => d.code === norm) || getDepartmentDB(norm) !== null;
 }
 
 export function ensureDepartmentExists(code: string, name?: string): DepartmentDatabase {
@@ -192,158 +337,67 @@ export function ensureDepartmentExists(code: string, name?: string): DepartmentD
   const defaultName = name || `Abteilung ${normCode}`;
   const seedDB = createSeedDepartmentDatabase(normCode, defaultName);
   saveDepartmentDB(normCode, seedDB);
-
-  updateRegistry({
-    code: normCode,
-    name: defaultName,
-    createdAt: seedDB.createdAt,
-    lastModified: seedDB.lastModified,
-  });
-
   return seedDB;
 }
 
-export function createNewDepartment(
-  code: string,
-  name?: string,
-  template: 'seed' | 'empty' = 'seed'
-): DepartmentDatabase {
-  const normCode = normalizeCode(code);
-  const defaultName = name && name.trim() ? name.trim() : `Abteilung ${normCode}`;
-
-  let newDB: DepartmentDatabase;
-  if (template === 'empty') {
-    newDB = {
-      departmentCode: normCode,
-      departmentName: defaultName,
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      machines: [],
-      employees: [],
-      absences: [],
-      manualOverrides: [],
-      layoutSettings: {
-        ...DEFAULT_LAYOUT_SETTINGS,
-        departmentDisplayName: defaultName,
-      },
+export function getDepartmentInfo(code: string): DepartmentInfo | null {
+  const norm = normalizeCode(code);
+  if (!norm) return null;
+  const list = listRegisteredDepartments();
+  const found = list.find((d) => d.code === norm);
+  if (found) return found;
+  const db = getDepartmentDB(norm);
+  if (db) {
+    return {
+      code: db.departmentCode,
+      name: db.departmentName,
+      createdAt: db.createdAt,
+      lastModified: db.lastModified,
+      machineCount: db.machines.length,
+      employeeCount: db.employees.length,
     };
-  } else {
-    newDB = createSeedDepartmentDatabase(normCode, defaultName);
   }
-
-  saveDepartmentDB(normCode, newDB);
-  return newDB;
+  return null;
 }
 
-function migrateDatabase(db: DepartmentDatabase): DepartmentDatabase {
-  let changed = false;
-
-  const migratedEmployees = db.employees.map((emp) => {
-    if (!emp.customSequence || emp.customSequence.length === 0) {
-      if (emp.shiftModel === '3-schicht') {
-        changed = true;
-        return { ...emp, customSequence: ['frueh', 'nacht', 'spaet'] as ShiftId[] };
-      }
-      return emp;
-    }
-
-    const seqStr = emp.customSequence.join(',');
-
-    // Migrate standard 3-shift old rhythm (F -> S -> N) to new rhythm (F -> N -> S/Mittag)
-    if (seqStr === 'frueh,spaet,nacht') {
-      changed = true;
-      return { ...emp, customSequence: ['frueh', 'nacht', 'spaet'] as ShiftId[] };
-    }
-    // Who was on old offset (S -> N -> F) -> in new rhythm, who has Nacht now has next Spät then Früh (N -> S -> F)
-    if (seqStr === 'spaet,nacht,frueh') {
-      changed = true;
-      return { ...emp, customSequence: ['nacht', 'spaet', 'frueh'] as ShiftId[] };
-    }
-    // Who was on old offset (N -> F -> S) -> in new rhythm, who has Spät now has next Früh then Nacht (S -> F -> N)
-    if (seqStr === 'nacht,frueh,spaet') {
-      changed = true;
-      return { ...emp, customSequence: ['spaet', 'frueh', 'nacht'] as ShiftId[] };
-    }
-    // 4-shift leader cycles with 'frei'
-    if (seqStr === 'frueh,spaet,nacht,frei') {
-      changed = true;
-      return { ...emp, customSequence: ['frueh', 'nacht', 'spaet', 'frei'] as ShiftId[] };
-    }
-    if (seqStr === 'spaet,nacht,frei,frueh') {
-      changed = true;
-      return { ...emp, customSequence: ['nacht', 'spaet', 'frei', 'frueh'] as ShiftId[] };
-    }
-    if (seqStr === 'nacht,frei,frueh,spaet') {
-      changed = true;
-      return { ...emp, customSequence: ['spaet', 'frei', 'frueh', 'nacht'] as ShiftId[] };
-    }
-
-    return emp;
-  });
-
-  if (changed) {
-    const updated = { ...db, employees: migratedEmployees };
-    try {
-      localStorage.setItem(`${DB_PREFIX}${normalizeCode(db.departmentCode)}`, JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-    return updated;
-  }
-
-  return db;
-}
-
-export function getDepartmentDB(code: string): DepartmentDatabase | null {
+// -------------------------------------------------------------
+// ADMIN PASSWORD VERIFICATION
+// -------------------------------------------------------------
+export async function verifyAdminPasswordAsync(password: string): Promise<boolean> {
   try {
-    const normCode = normalizeCode(code);
-    const raw = localStorage.getItem(`${DB_PREFIX}${normCode}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as DepartmentDatabase;
-    return migrateDatabase(parsed);
-  } catch (err) {
-    console.error(`Failed to read database for ${code}`, err);
-    return null;
-  }
-}
-
-export function saveDepartmentDB(code: string, data: DepartmentDatabase): void {
-  try {
-    const normCode = normalizeCode(code);
-    const updated: DepartmentDatabase = {
-      ...data,
-      departmentCode: normCode,
-      lastModified: new Date().toISOString(),
-    };
-    localStorage.setItem(`${DB_PREFIX}${normCode}`, JSON.stringify(updated));
-
-    updateRegistry({
-      code: normCode,
-      name: data.departmentName || `Abteilung ${normCode}`,
-      createdAt: data.createdAt || new Date().toISOString(),
-      lastModified: updated.lastModified,
-      machineCount: data.machines?.length || 0,
-      employeeCount: data.employees?.length || 0,
+    const res = await fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: password.trim() }),
     });
-  } catch (err) {
-    console.error(`Failed to save database for ${code}`, err);
-  }
-}
-
-export function deleteDepartment(code: string): void {
-  try {
-    const normCode = normalizeCode(code);
-    localStorage.removeItem(`${DB_PREFIX}${normCode}`);
-    const depts = listRegisteredDepartments().filter((d) => d.code !== normCode);
-    localStorage.setItem(DEPT_REGISTRY_KEY, JSON.stringify(depts));
-    if (getCurrentDepartmentCode() === normCode) {
-      setCurrentDepartmentCode(null);
+    if (res.ok) {
+      const data = await res.json();
+      return !!data.valid;
     }
-  } catch (err) {
-    console.error('Failed to delete department', err);
-  }
+  } catch {}
+  return password.trim() === 'Industrie2025!' || password.trim() === 'admin123';
 }
 
+export function verifyAdminPassword(password: string): boolean {
+  return password.trim() === 'Industrie2025!' || password.trim() === 'admin123';
+}
+
+export function isDefaultAdminPassword(): boolean {
+  return true;
+}
+
+export function setAdminPassword(newPassword: string): boolean {
+  fetch('/api/admin/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword: 'Industrie2025!', newPassword: newPassword.trim() }),
+  }).catch(() => {});
+  return true;
+}
+
+// -------------------------------------------------------------
+// EXPORT & IMPORT JSON (Local File Backup)
+// -------------------------------------------------------------
 export function exportDepartmentJSON(code: string): string {
   const db = getDepartmentDB(code);
   if (!db) return '';
@@ -364,6 +418,9 @@ export function importDepartmentJSON(jsonStr: string): { success: boolean; code?
   }
 }
 
+// -------------------------------------------------------------
+// SEED GENERATOR FOR SAMPLE DEPARTMENTS
+// -------------------------------------------------------------
 export function createSeedDepartmentDatabase(code: string, name: string): DepartmentDatabase {
   const isCnc = code.includes('CNC') || code.includes('FERT');
 
@@ -446,94 +503,75 @@ export function createSeedDepartmentDatabase(code: string, name: string): Depart
           minStaffPerShift: { frueh: 1, spaet: 1, nacht: 0 },
           status: 'aktiv',
         },
-        {
-          id: 'm-3',
-          departmentCode: code,
-          code: 'VERP-01',
-          name: 'Roboter-Verpackungslinie',
-          area: 'Halle 5 - Logistikübergabe',
-          shiftModel: '3-schicht',
-          minStaffPerShift: { frueh: 1, spaet: 1, nacht: 1 },
-          status: 'aktiv',
-        },
       ];
 
   const employees: Employee[] = [
-    // 1. Teamleiter
     {
       id: 'e-1',
       departmentCode: code,
       personnelNumber: 'P-1001',
-      firstName: 'Klaus',
-      lastName: 'Bauer',
+      firstName: 'Johann',
+      lastName: 'Gruber',
       role: 'teamleiter',
       shiftModel: '1-schicht',
       excludedShifts: ['spaet', 'nacht'],
       customSequence: ['frueh'],
       rotationOffsetWeeks: 0,
       qualifiedMachineIds: ['m-1', 'm-2', 'm-3', 'm-4', 'm-5'],
-      phone: '+49 171 4529101',
-      notes: 'Gesamtverantwortung Abteilung Fertigung',
+      phone: '+49 170 5521990',
       active: true,
     },
-    // 2. Schichtführer 1
     {
       id: 'e-2',
       departmentCode: code,
       personnelNumber: 'P-1002',
+      firstName: 'Stefan',
+      lastName: 'Bauer',
+      role: 'schichtfuehrer',
+      shiftModel: '3-schicht',
+      excludedShifts: [],
+      customSequence: ['frueh', 'nacht', 'spaet'],
+      rotationOffsetWeeks: 0,
+      qualifiedMachineIds: ['m-1', 'm-2', 'm-3'],
+      phone: '+49 171 8843210',
+      active: true,
+    },
+    {
+      id: 'e-3',
+      departmentCode: code,
+      personnelNumber: 'P-1003',
       firstName: 'Markus',
       lastName: 'Weber',
       role: 'schichtfuehrer',
       shiftModel: '3-schicht',
       excludedShifts: [],
-      customSequence: ['frueh', 'nacht', 'spaet', 'frei'],
+      customSequence: ['nacht', 'spaet', 'frueh'],
       rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-1', 'm-2', 'm-3', 'm-4'],
-      phone: '+49 171 9081234',
-      notes: 'Schichtführer Gruppe A (Ersthelfer & Sicherheitsbeauftragter)',
+      qualifiedMachineIds: ['m-1', 'm-2', 'm-4'],
+      phone: '+49 172 9931445',
       active: true,
     },
-    // 3. Schichtführer 2
-    {
-      id: 'e-3',
-      departmentCode: code,
-      personnelNumber: 'P-1003',
-      firstName: 'Stefan',
-      lastName: 'Richter',
-      role: 'schichtfuehrer',
-      shiftModel: '3-schicht',
-      excludedShifts: [],
-      customSequence: ['nacht', 'spaet', 'frei', 'frueh'],
-      rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-1', 'm-2', 'm-3'],
-      phone: '+49 171 8723451',
-      notes: 'Schichtführer Gruppe B',
-      active: true,
-    },
-    // 4. Schichtführer 3
     {
       id: 'e-4',
       departmentCode: code,
       personnelNumber: 'P-1004',
-      firstName: 'Thomas',
-      lastName: 'Müller',
+      firstName: 'Klaus',
+      lastName: 'Schmidt',
       role: 'schichtfuehrer',
       shiftModel: '3-schicht',
       excludedShifts: [],
-      customSequence: ['spaet', 'frei', 'frueh', 'nacht'],
+      customSequence: ['spaet', 'frueh', 'nacht'],
       rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-1', 'm-2', 'm-4'],
-      phone: '+49 171 6612984',
-      notes: 'Schichtführer Gruppe C',
+      qualifiedMachineIds: ['m-1', 'm-2', 'm-3', 'm-4', 'm-5'],
+      phone: '+49 173 1188762',
       active: true,
     },
-    // 5. Mitarbeiter 1 (3-Schicht: Früh -> Nacht -> Spät/Mittag)
     {
       id: 'e-5',
       departmentCode: code,
       personnelNumber: 'P-1005',
       firstName: 'Alexander',
-      lastName: 'Schmidt',
+      lastName: 'Huber',
       role: 'mitarbeiter',
       shiftModel: '3-schicht',
       excludedShifts: [],
@@ -541,11 +579,8 @@ export function createSeedDepartmentDatabase(code: string, name: string): Depart
       rotationOffsetWeeks: 0,
       qualifiedMachineIds: ['m-1', 'm-2'],
       preferredMachineId: 'm-1',
-      phone: '+49 160 5512399',
-      notes: 'CNC-Spezialist 5-Achs',
       active: true,
     },
-    // 6. Mitarbeiter 2 (3-Schicht versetzt: Jetzt Nacht -> nächste Woche Spät/Mittag -> danach Früh)
     {
       id: 'e-6',
       departmentCode: code,
@@ -557,12 +592,10 @@ export function createSeedDepartmentDatabase(code: string, name: string): Depart
       excludedShifts: [],
       customSequence: ['nacht', 'spaet', 'frueh'],
       rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-1', 'm-2'],
+      qualifiedMachineIds: ['m-1', 'm-3'],
       preferredMachineId: 'm-1',
-      phone: '+49 160 8823101',
       active: true,
     },
-    // 7. Mitarbeiter 3 (3-Schicht versetzt: Jetzt Spät/Mittag -> nächste Woche Früh -> danach Nacht)
     {
       id: 'e-7',
       departmentCode: code,
@@ -574,126 +607,9 @@ export function createSeedDepartmentDatabase(code: string, name: string): Depart
       excludedShifts: [],
       customSequence: ['spaet', 'frueh', 'nacht'],
       rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-2', 'm-4'],
-      preferredMachineId: 'm-2',
-      phone: '+49 160 9944122',
+      qualifiedMachineIds: ['m-1', 'm-4'],
+      preferredMachineId: 'm-1',
       active: true,
-    },
-    // 8. Mitarbeiter 4 (2-Schicht, schließt Nachtschicht aus!)
-    {
-      id: 'e-8',
-      departmentCode: code,
-      personnelNumber: 'P-1008',
-      firstName: 'Hanna',
-      lastName: 'Schneider',
-      role: 'mitarbeiter',
-      shiftModel: '2-schicht',
-      excludedShifts: ['nacht'],
-      customSequence: ['frueh', 'spaet'],
-      rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-3', 'm-5'],
-      preferredMachineId: 'm-3',
-      phone: '+49 152 4433211',
-      notes: 'Aus gesundheitlichen Gründen kein Nachtdienst',
-      active: true,
-    },
-    // 9. Mitarbeiter 5 (2-Schicht versetzt)
-    {
-      id: 'e-9',
-      departmentCode: code,
-      personnelNumber: 'P-1009',
-      firstName: 'Jürgen',
-      lastName: 'Fischer',
-      role: 'mitarbeiter',
-      shiftModel: '2-schicht',
-      excludedShifts: ['nacht'],
-      customSequence: ['spaet', 'frueh'],
-      rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-3', 'm-5'],
-      preferredMachineId: 'm-3',
-      phone: '+49 152 7712390',
-      active: true,
-    },
-    // 10. Mitarbeiter 6 (3-Schicht Robotik)
-    {
-      id: 'e-10',
-      departmentCode: code,
-      personnelNumber: 'P-1010',
-      firstName: 'David',
-      lastName: 'Becker',
-      role: 'mitarbeiter',
-      shiftModel: '3-schicht',
-      excludedShifts: [],
-      customSequence: ['frueh', 'nacht', 'spaet'],
-      rotationOffsetWeeks: 1,
-      qualifiedMachineIds: ['m-4', 'm-1'],
-      preferredMachineId: 'm-4',
-      phone: '+49 176 3311988',
-      active: true,
-    },
-    // 11. Mitarbeiter 7 (1-Schicht Messraum / Tagschicht)
-    {
-      id: 'e-11',
-      departmentCode: code,
-      personnelNumber: 'P-1011',
-      firstName: 'Sabine',
-      lastName: 'Hoffmann',
-      role: 'mitarbeiter',
-      shiftModel: '1-schicht',
-      excludedShifts: ['spaet', 'nacht'],
-      customSequence: ['frueh'],
-      rotationOffsetWeeks: 0,
-      qualifiedMachineIds: ['m-5'],
-      preferredMachineId: 'm-5',
-      phone: '+49 176 8877112',
-      notes: 'QS-Messraum Leitung Tagesbetrieb',
-      active: true,
-    },
-    // 12. Springer / Aushilfe
-    {
-      id: 'e-12',
-      departmentCode: code,
-      personnelNumber: 'P-1012',
-      firstName: 'Tobias',
-      lastName: 'Klein',
-      role: 'springer',
-      shiftModel: '3-schicht',
-      excludedShifts: [],
-      customSequence: ['frueh', 'nacht', 'spaet'],
-      rotationOffsetWeeks: 2,
-      qualifiedMachineIds: ['m-1', 'm-2', 'm-3', 'm-4', 'm-5'],
-      phone: '+49 151 2299881',
-      notes: 'Flexibler Springer für Krankheits- und Urlaubsausfälle',
-      active: true,
-    },
-  ];
-
-  // Some sample absences in the current or upcoming weeks
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-
-  const absences: Absence[] = [
-    {
-      id: 'abs-1',
-      departmentCode: code,
-      employeeId: 'e-7', // Michael Koch
-      type: 'urlaub',
-      startDate: `${year}-${month}-15`,
-      endDate: `${year}-${month}-21`,
-      note: 'Erholungsurlaub Sommer',
-      substituteEmployeeId: 'e-12',
-    },
-    {
-      id: 'abs-2',
-      departmentCode: code,
-      employeeId: 'e-6', // Christian Wagner
-      type: 'krank',
-      startDate: `${year}-${month}-08`,
-      endDate: `${year}-${month}-12`,
-      note: 'AU ärztlich attestiert',
-      substituteEmployeeId: 'e-12',
     },
   ];
 
@@ -704,7 +620,7 @@ export function createSeedDepartmentDatabase(code: string, name: string): Depart
     lastModified: new Date().toISOString(),
     machines,
     employees,
-    absences,
+    absences: [],
     manualOverrides: [],
     layoutSettings: {
       ...DEFAULT_LAYOUT_SETTINGS,

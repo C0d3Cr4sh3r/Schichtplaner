@@ -3,10 +3,10 @@ import { DepartmentDatabase } from './types';
 import {
   getCurrentDepartmentCode,
   setCurrentDepartmentCode,
-  getDepartmentDB,
-  saveDepartmentDB,
+  getDepartmentDBAsync,
+  saveDepartmentDBAsync,
   ensureDepartmentExists,
-  listRegisteredDepartments,
+  listRegisteredDepartmentsAsync,
 } from './lib/storage';
 import { DepartmentLogin } from './components/DepartmentLogin';
 import { HeaderNav, ActiveTab } from './components/HeaderNav';
@@ -25,26 +25,45 @@ export default function App() {
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [isAdminModeRequested, setIsAdminModeRequested] = useState(false);
 
-  // Initialize department from storage
+  // Initialize department from server and local cache
   useEffect(() => {
     const savedDept = getCurrentDepartmentCode();
     if (savedDept) {
-      const db = getDepartmentDB(savedDept) || ensureDepartmentExists(savedDept);
       setCurrentDeptCodeState(savedDept);
-      setCurrentDB(db);
-    } else {
-      // Check if there are default departments
-      const depts = listRegisteredDepartments();
-      if (depts.length > 0) {
-        // We show login screen to require Kürzel entry
-      }
+      getDepartmentDBAsync(savedDept).then((db) => {
+        if (db) {
+          setCurrentDB(db);
+        } else {
+          const fallback = ensureDepartmentExists(savedDept);
+          setCurrentDB(fallback);
+        }
+      });
     }
+    listRegisteredDepartmentsAsync();
   }, []);
 
-  const handleLogin = (deptCode: string) => {
-    const db = getDepartmentDB(deptCode) || ensureDepartmentExists(deptCode);
+  // Periodic poll to synchronize changes made by other colleagues in the intranet
+  useEffect(() => {
+    if (!currentDeptCode) return;
+    const interval = setInterval(() => {
+      getDepartmentDBAsync(currentDeptCode).then((latest) => {
+        if (latest && (!currentDB || latest.lastModified !== currentDB.lastModified)) {
+          setCurrentDB(latest);
+        }
+      });
+    }, 4000); // 4 seconds intranet sync
+    return () => clearInterval(interval);
+  }, [currentDeptCode, currentDB]);
+
+  const handleLogin = async (deptCode: string) => {
     setCurrentDeptCodeState(deptCode);
-    setCurrentDB(db);
+    const db = await getDepartmentDBAsync(deptCode);
+    if (db) {
+      setCurrentDB(db);
+    } else {
+      const fallback = ensureDepartmentExists(deptCode);
+      setCurrentDB(fallback);
+    }
     setIsAdminModeRequested(false);
   };
 
@@ -62,17 +81,17 @@ export default function App() {
     setIsAdminModeRequested(true);
   };
 
-  const handleUpdateDB = (updated: DepartmentDatabase) => {
+  const handleUpdateDB = async (updated: DepartmentDatabase) => {
     if (!currentDeptCode) return;
-    saveDepartmentDB(currentDeptCode, updated);
     setCurrentDB(updated);
+    await saveDepartmentDBAsync(currentDeptCode, updated);
   };
 
-  const handleImportSuccess = (code: string) => {
+  const handleImportSuccess = async (code: string) => {
     setCurrentDepartmentCode(code);
     setCurrentDeptCodeState(code);
-    const db = getDepartmentDB(code);
-    setCurrentDB(db);
+    const db = await getDepartmentDBAsync(code);
+    if (db) setCurrentDB(db);
     setIsDBModalOpen(false);
     setIsAdminModeRequested(false);
   };
