@@ -9,6 +9,36 @@ export const DEFAULT_ADMIN_PASSWORD = 'Industrie2025!';
 
 let cachedServerStatus: { online: boolean; timestamp: number } | null = null;
 
+/**
+ * Hilfsfunktion für sichere API-Aufrufe. Verhindert Fehler, wenn statische Hosts
+ * (wie Vercel SPA-Routing) bei 404-Routen die index.html zurückgeben.
+ */
+async function fetchApiJson<T>(url: string, options?: RequestInit): Promise<T | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        ...(options?.headers || {}),
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      // Kein echter JSON-Server (z.B. Vercel SPA-Rewrite lieferte HTML)
+      return null;
+    }
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkServerConnection(force = false): Promise<boolean> {
   const now = Date.now();
   if (!force && cachedServerStatus && (now - cachedServerStatus.timestamp < 10000)) {
@@ -16,11 +46,8 @@ export async function checkServerConnection(force = false): Promise<boolean> {
   }
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch('/api/departments', { signal: controller.signal });
-    clearTimeout(timeoutId);
-    const isOnline = res.ok;
+    const data = await fetchApiJson<{ status: string; mode: string }>('/api/status');
+    const isOnline = !!data && data.status === 'online' && data.mode === 'intranet-local-database';
     cachedServerStatus = { online: isOnline, timestamp: now };
     return isOnline;
   } catch {
@@ -190,20 +217,12 @@ function removeDepartmentFromRegistryCache(code: string): void {
  * Lists all departments from the server, falling back to local registry.
  */
 export async function listRegisteredDepartmentsAsync(): Promise<DepartmentInfo[]> {
-  try {
-    const res = await fetch('/api/departments');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        try {
-          localStorage.setItem(LOCAL_REGISTRY_CACHE, JSON.stringify(data));
-        } catch {}
-        return data;
-      }
-    }
-  } catch (err) {
-    // Expected on static hosting (like Vercel) or when server is unreachable
-    console.debug('[Intranet DB] Using local registry fallback:', err);
+  const data = await fetchApiJson<DepartmentInfo[]>('/api/departments');
+  if (Array.isArray(data) && data.length > 0) {
+    try {
+      localStorage.setItem(LOCAL_REGISTRY_CACHE, JSON.stringify(data));
+    } catch {}
+    return data;
   }
 
   return getLocalRegistry();
@@ -238,19 +257,14 @@ export async function getDepartmentDBAsync(code: string): Promise<DepartmentData
   if (!norm) return null;
 
   // 1. Try server fetch
-  try {
-    const res = await fetch(`/api/departments/${norm}`);
-    if (res.ok) {
-      const raw = (await res.json()) as DepartmentDatabase;
-      const data = normalizeDepartmentDatabase(raw);
-      try {
-        localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(data));
-        updateDepartmentInRegistryCache(data);
-      } catch {}
-      return data;
-    }
-  } catch (err) {
-    console.debug(`[Intranet DB] Fetch failed for ${norm}, falling back to local storage:`, err);
+  const serverData = await fetchApiJson<DepartmentDatabase>(`/api/departments/${norm}`);
+  if (serverData) {
+    const data = normalizeDepartmentDatabase(serverData);
+    try {
+      localStorage.setItem(`${LOCAL_CACHE_PREFIX}${norm}`, JSON.stringify(data));
+      updateDepartmentInRegistryCache(data);
+    } catch {}
+    return data;
   }
 
   // 2. Local storage cache
@@ -344,16 +358,20 @@ export async function saveDepartmentDBAsync(code: string, data: DepartmentDataba
 
     const res = await fetch(`/api/departments/${norm}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
       body: JSON.stringify(payload),
     });
 
-    if (res.status === 409) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.status === 409 && contentType.includes('application/json')) {
       const body = await res.json();
       return { status: 'conflict', current: normalizeDepartmentDatabase(body.current) };
     }
 
-    if (res.ok) {
+    if (res.ok && contentType.includes('application/json')) {
       const result = await res.json();
       const serverConfirmed: DepartmentDatabase = {
         ...data,
@@ -514,13 +532,10 @@ export async function verifyDepartmentCodeAsync(code: string): Promise<boolean> 
   const norm = normalizeCode(code);
   if (!norm) return false;
 
-  try {
-    const res = await fetch(`/api/departments/${norm}/verify`);
-    if (res.ok) {
-      const data = await res.json();
-      return !!data.valid;
-    }
-  } catch {}
+  const data = await fetchApiJson<{ valid: boolean }>(`/api/departments/${norm}/verify`);
+  if (data && typeof data.valid === 'boolean') {
+    return data.valid;
+  }
 
   return verifyDepartmentCode(norm);
 }
@@ -573,10 +588,11 @@ export async function verifyAdminPasswordAsync(password: string): Promise<boolea
   try {
     const res = await fetch('/api/admin/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ password: trimmed }),
     });
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
       return !!data.valid;
     }
@@ -597,10 +613,11 @@ export async function isDefaultAdminPasswordAsync(): Promise<boolean> {
   try {
     const res = await fetch('/api/admin/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ password: '' }),
     });
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
       return !!data.isDefault;
     }
@@ -628,12 +645,13 @@ export async function changeAdminPasswordAsync(
   try {
     const res = await fetch('/api/admin/change-password', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ currentPassword, newPassword }),
     });
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       serverSuccess = true;
-    } else if (res.status === 401) {
+    } else if (res.status === 401 && contentType.includes('application/json')) {
       const data = await res.json();
       return { success: false, error: data.error || 'Aktuelles Passwort ist nicht korrekt.' };
     }
