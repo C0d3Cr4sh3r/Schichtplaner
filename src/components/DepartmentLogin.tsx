@@ -31,6 +31,7 @@ import {
   isDefaultAdminPasswordAsync,
   DEFAULT_ADMIN_PASSWORD,
   createNewDepartmentAsync,
+  changeAdminPasswordAsync,
 } from '../lib/storage';
 import { ArcanePixelsBrand } from './ArcanePixelsBrand';
 
@@ -154,7 +155,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   };
 
   // Admin: Change password
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordChangeError(null);
     setPasswordChangeSuccess(null);
@@ -169,26 +170,17 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
       return;
     }
 
-    fetch('/api/admin/change-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentPassword: oldPassword, newPassword }),
-    })
-      .then(async (res) => {
-        if (res.ok) {
-          setPasswordChangeSuccess('Admin-Passwort wurde erfolgreich geändert! Bitte gut notieren.');
-          setOldPassword('');
-          setNewPassword('');
-          setConfirmPassword('');
-          setTimeout(() => setShowPasswordChange(false), 3500);
-        } else {
-          const data = await res.json();
-          setPasswordChangeError(data.error || 'Fehler beim Ändern des Passworts.');
-        }
-      })
-      .catch(() => {
-        setPasswordChangeError('Server nicht erreichbar.');
-      });
+    const res = await changeAdminPasswordAsync(oldPassword, newPassword);
+    if (res.success) {
+      setPasswordChangeSuccess('Admin-Passwort wurde erfolgreich geändert! Bitte gut notieren.');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setIsDefaultPassword(false);
+      setTimeout(() => setShowPasswordChange(false), 3500);
+    } else {
+      setPasswordChangeError(res.error || 'Fehler beim Ändern des Passworts.');
+    }
   };
 
   // Delete department (admin only)
