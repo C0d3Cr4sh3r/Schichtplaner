@@ -18,6 +18,7 @@ import { AbsenceManager } from './components/AbsenceManager';
 import { LayoutEditorAndPrint } from './components/LayoutEditorAndPrint';
 import { DatabaseManagerModal } from './components/DatabaseManagerModal';
 import { ArcanePixelsBrand } from './components/ArcanePixelsBrand';
+import { UserManual } from './components/UserManual';
 
 export type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'error' } | { kind: 'conflict' };
 
@@ -221,6 +222,10 @@ export default function App() {
 
         {activeTab === 'layout' && (
           <LayoutEditorAndPrint db={currentDB} onUpdateDB={handleUpdateDB} />
+        )}
+
+        {activeTab === 'anleitung' && (
+          <UserManual />
         )}
       </main>
 

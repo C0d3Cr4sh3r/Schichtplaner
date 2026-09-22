@@ -11,12 +11,13 @@ import {
   Upload,
   RefreshCw,
   Lock,
+  BookOpen,
 } from 'lucide-react';
 import { DepartmentDatabase } from '../types';
 import { detectMachineVacationConflicts } from '../lib/absenceUtils';
 import { ArcanePixelsBrand } from './ArcanePixelsBrand';
 
-export type ActiveTab = 'wochenplan' | 'maschinen' | 'mitarbeiter' | 'abwesenheiten' | 'layout';
+export type ActiveTab = 'wochenplan' | 'maschinen' | 'mitarbeiter' | 'abwesenheiten' | 'layout' | 'anleitung';
 
 interface HeaderNavProps {
   db: DepartmentDatabase;
@@ -55,6 +56,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
       conflictCount: vacationConflicts.length,
     },
     { id: 'layout' as ActiveTab, label: 'DIN-A4 Layout & Druck', icon: Printer, count: undefined, conflictCount: 0 },
+    { id: 'anleitung' as ActiveTab, label: 'Handbuch & Anleitung', icon: BookOpen, count: undefined, conflictCount: 0 },
   ];
 
   return (
