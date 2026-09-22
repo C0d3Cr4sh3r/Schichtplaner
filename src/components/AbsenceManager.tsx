@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DepartmentDatabase, Absence, AbsenceType } from '../types';
 import {
   CalendarOff,
@@ -11,9 +11,12 @@ import {
   List,
   Sparkles,
   Filter,
+  AlertTriangle,
+  Info,
 } from 'lucide-react';
 import { YearlyAbsenceCalendar } from './YearlyAbsenceCalendar';
-import { ABSENCE_CONFIGS } from '../lib/absenceUtils';
+import { ABSENCE_CONFIGS, calculateEmployeeVacationSummary } from '../lib/absenceUtils';
+import { countVacationWorkingDays } from '../lib/holidayUtils';
 
 interface AbsenceManagerProps {
   db: DepartmentDatabase;
@@ -73,6 +76,31 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
     if (tableTypeFilter === 'all') return true;
     return a.type === tableTypeFilter;
   });
+
+  // Simulation for modal
+  const modalSimulation = useMemo(() => {
+    if (!editingAbsence || !editingAbsence.employeeId || !editingAbsence.startDate || !editingAbsence.endDate) {
+      return null;
+    }
+    const emp = db.employees.find((e) => e.id === editingAbsence.employeeId);
+    if (!emp) return null;
+
+    const start = editingAbsence.startDate <= editingAbsence.endDate ? editingAbsence.startDate : editingAbsence.endDate;
+    const end = editingAbsence.startDate <= editingAbsence.endDate ? editingAbsence.endDate : editingAbsence.startDate;
+    const dateCount = countVacationWorkingDays(start, end);
+    const workingDays = dateCount.workingDays;
+    const calendarDays = dateCount.workingDays + dateCount.weekendDays + dateCount.holidaysCount;
+
+    const year = parseInt(start.substring(0, 4), 10) || new Date().getFullYear();
+    const summary = calculateEmployeeVacationSummary(emp, db.absences, year);
+
+    return {
+      emp,
+      workingDays,
+      calendarDays,
+      summary,
+    };
+  }, [editingAbsence, db.employees, db.absences]);
 
   return (
     <div className="space-y-6">
@@ -246,7 +274,19 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
                           </td>
 
                           <td className="py-3 px-4 text-slate-600 font-mono">
-                            {diffDays} {diffDays === 1 ? 'Tag' : 'Tage'}
+                            {(() => {
+                              const res = countVacationWorkingDays(abs.startDate, abs.endDate);
+                              const workDays = res.workingDays;
+                              const calDays = res.workingDays + res.weekendDays + res.holidaysCount;
+                              return (
+                                <div title={`${calDays} Kalendertage (davon ${workDays} echte Arbeitstage Mo-Fr ohne Feiertage)`}>
+                                  <span className="font-bold text-slate-800">{workDays} AT</span>
+                                  {calDays !== workDays && (
+                                    <span className="text-[10px] text-slate-400 ml-1">({calDays} KT)</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
 
                           <td className="py-3 px-4">
@@ -374,6 +414,26 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
                 />
               </div>
             </div>
+
+            {/* Live Calculation preview for modal */}
+            {modalSimulation && (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                <div className="flex items-center justify-between font-semibold text-slate-800">
+                  <span>Dauer dieses Eintrags:</span>
+                  <span className="font-mono bg-white px-2 py-0.5 rounded border border-slate-200">
+                    {modalSimulation.workingDays} Arbeitstage ({modalSimulation.calendarDays} Kalendertage)
+                  </span>
+                </div>
+                {editingAbsence.type === 'urlaub' && (
+                  <div className="pt-1.5 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
+                    <span>Urlaubskonto {modalSimulation.emp.firstName} {modalSimulation.emp.lastName}:</span>
+                    <span className="font-mono font-bold text-blue-700">
+                      Anspruch: {modalSimulation.summary.totalEntitlement} T. • Aktuell verbraucht: {modalSimulation.summary.takenWorkingDays} T.
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">

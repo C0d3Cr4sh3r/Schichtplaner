@@ -28,6 +28,10 @@ export interface Employee {
   phone?: string;
   notes?: string;
   active: boolean;
+  // Urlaubsanspruch & Sonderregelungen (z.B. Schwerbehinderung %, Zusatzurlaub, Vorjahresübertrag)
+  yearlyVacationQuota?: number; // Standard z. B. 30 Tage, oder individuell (z.B. 35 Tage bei GdB/Prozenten)
+  vacationCarryoverDays?: number; // Resturlaub / Übertrag aus dem Vorjahr (z. B. 3 Tage)
+  vacationSpecialNotes?: string; // Begründung / Sonderregelung (z.B. "50% GdB Zusatzurlaub (+5 Tage)", "Teilzeit 80%")
 }
 
 export interface Machine {

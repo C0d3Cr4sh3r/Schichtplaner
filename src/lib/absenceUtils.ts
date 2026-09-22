@@ -1,5 +1,5 @@
-import { Absence, AbsenceType } from '../types';
-import { isWorkingDay } from './holidayUtils';
+import { Absence, AbsenceType, Employee } from '../types';
+import { isWorkingDay, countVacationWorkingDays } from './holidayUtils';
 
 export interface AbsenceTypeConfig {
   type: AbsenceType;
@@ -216,14 +216,18 @@ export function consolidateDatesToAbsences(
 
 /**
  * Apply a stamp (or eraser) to a single date for an employee.
- * Rebuilds and consolidates the employee's absences cleanly.
+ * mode:
+ *  - 'toggle': default for clicks (if matching, toggles off)
+ *  - 'set': for dragging across days (unconditionally applies without toggling off)
+ *  - 'erase': unconditionally deletes
  */
 export function applyStampToEmployeeDate(
   allAbsences: Absence[],
   deptCode: string,
   employeeId: string,
   dateStr: string,
-  stamp: AbsenceType | 'eraser'
+  stamp: AbsenceType | 'eraser',
+  mode: 'toggle' | 'set' | 'erase' = 'toggle'
 ): Absence[] {
   // 1. Separate this employee's absences from all other employees
   const otherEmployeesAbsences = allAbsences.filter((a) => a.employeeId !== employeeId);
@@ -239,11 +243,13 @@ export function applyStampToEmployeeDate(
     }
   }
 
-  // 3. Apply stamp
-  if (stamp === 'eraser') {
+  // 3. Apply stamp according to mode
+  if (stamp === 'eraser' || mode === 'erase') {
     dateTypeMap.delete(dateStr);
+  } else if (mode === 'set') {
+    dateTypeMap.set(dateStr, stamp);
   } else {
-    // If already has this stamp, toggle it off!
+    // toggle mode
     if (dateTypeMap.get(dateStr) === stamp) {
       dateTypeMap.delete(dateStr);
     } else {
@@ -265,7 +271,7 @@ export function applyStampToEmployeeDate(
 }
 
 /**
- * Apply stamp to a range of dates (e.g. from Monday to Friday)
+ * Apply stamp to a range of dates (e.g. from Monday to Friday or multi-week vacation)
  */
 export function applyRangeStampToEmployee(
   allAbsences: Absence[],
@@ -275,7 +281,8 @@ export function applyRangeStampToEmployee(
   endDateStr: string,
   stamp: AbsenceType | 'eraser',
   note?: string,
-  substituteId?: string
+  substituteId?: string,
+  onlyWorkingDays: boolean = false
 ): Absence[] {
   const otherEmployeesAbsences = allAbsences.filter((a) => a.employeeId !== employeeId);
   const empAbsences = allAbsences.filter((a) => a.employeeId === employeeId);
@@ -294,10 +301,14 @@ export function applyRangeStampToEmployee(
   const end = startDateStr < endDateStr ? endDateStr : startDateStr;
 
   while (start <= end) {
-    if (stamp === 'eraser') {
-      dateTypeMap.delete(start);
-    } else {
-      dateTypeMap.set(start, stamp);
+    // If onlyWorkingDays is enabled (e.g. for workdays vacation), skip weekends & holidays
+    const shouldApply = !onlyWorkingDays || isWorkingDay(start);
+    if (shouldApply) {
+      if (stamp === 'eraser') {
+        dateTypeMap.delete(start);
+      } else {
+        dateTypeMap.set(start, stamp);
+      }
     }
     start = addDaysToDateStr(start, 1);
   }
@@ -320,6 +331,68 @@ export function applyRangeStampToEmployee(
   }
 
   return [...otherEmployeesAbsences, ...newEmpAbsences];
+}
+
+export interface EmployeeVacationSummary {
+  employeeId: string;
+  employeeName: string;
+  personnelNumber: string;
+  role: string;
+  baseQuota: number; // e.g. 30
+  carryover: number; // e.g. 2
+  totalEntitlement: number; // baseQuota + carryover
+  takenWorkingDays: number; // Echte Arbeitstage (ohne Sa/So und Feiertage)
+  takenCalendarDays: number; // Brutto-Kalendertage
+  remainingDays: number; // totalEntitlement - takenWorkingDays
+  isOverdrawn: boolean; // takenWorkingDays > totalEntitlement
+  overdrawnDays: number; // Math.max(0, takenWorkingDays - totalEntitlement)
+  percentUsed: number; // 0-100+ %
+  specialNotes?: string;
+}
+
+/**
+ * Calculate full vacation quota, used days, remaining balance and overdraw status
+ */
+export function calculateEmployeeVacationSummary(
+  emp: Employee,
+  absences: Absence[],
+  year: number
+): EmployeeVacationSummary {
+  const baseQuota =
+    typeof emp.yearlyVacationQuota === 'number' && !isNaN(emp.yearlyVacationQuota)
+      ? emp.yearlyVacationQuota
+      : 30; // Default standard in Germany: 30 Tage
+  const carryover =
+    typeof emp.vacationCarryoverDays === 'number' && !isNaN(emp.vacationCarryoverDays)
+      ? emp.vacationCarryoverDays
+      : 0;
+  const totalEntitlement = baseQuota + carryover;
+
+  const stats = getEmployeeAnnualStats(absences, emp.id, year);
+  const takenWorkingDays = stats.urlaubWorkingDays;
+  const takenCalendarDays = stats.urlaub;
+  const remainingDays = totalEntitlement - takenWorkingDays;
+  const isOverdrawn = takenWorkingDays > totalEntitlement;
+  const overdrawnDays = isOverdrawn ? takenWorkingDays - totalEntitlement : 0;
+  const percentUsed =
+    totalEntitlement > 0 ? Math.round((takenWorkingDays / totalEntitlement) * 100) : 0;
+
+  return {
+    employeeId: emp.id,
+    employeeName: `${emp.lastName}, ${emp.firstName}`,
+    personnelNumber: emp.personnelNumber,
+    role: emp.role,
+    baseQuota,
+    carryover,
+    totalEntitlement,
+    takenWorkingDays,
+    takenCalendarDays,
+    remainingDays,
+    isOverdrawn,
+    overdrawnDays,
+    percentUsed,
+    specialNotes: emp.vacationSpecialNotes,
+  };
 }
 
 /**
@@ -357,7 +430,7 @@ export function getEmployeeAnnualStats(
       if (stats[a.type] !== undefined) {
         stats[a.type] += 1;
       }
-      // For vacation, also track working days (not weekend, not legal holiday)
+      // For vacation, track working days (excluding weekends & holidays)
       if (a.type === 'urlaub') {
         if (isWorkingDay(curr)) {
           stats.urlaubWorkingDays += 1;

@@ -8,6 +8,8 @@ import {
   applyStampToEmployeeDate,
   applyRangeStampToEmployee,
   getEmployeeAnnualStats,
+  calculateEmployeeVacationSummary,
+  EmployeeVacationSummary,
   addDaysToDateStr,
   parseISODate,
   detectMachineVacationConflicts,
@@ -30,6 +32,9 @@ import {
   Sparkles,
   CalendarCheck,
   Flag,
+  Percent,
+  Sliders,
+  Check,
 } from 'lucide-react';
 
 interface YearlyAbsenceCalendarProps {
@@ -65,18 +70,17 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   const [rangeEndDate, setRangeEndDate] = useState<string>(todayKey);
   const [rangeStamp, setRangeStamp] = useState<AbsenceType>('urlaub');
   const [rangeNote, setRangeNote] = useState<string>('');
+  const [rangeOnlyWorkingDays, setRangeOnlyWorkingDays] = useState<boolean>(true);
+
+  // Quick Vacation Quota Edit Modal state
+  const [quotaModalEmployee, setQuotaModalEmployee] = useState<Employee | null>(null);
+  const [editQuotaValue, setEditQuotaValue] = useState<number>(30);
+  const [editCarryoverValue, setEditCarryoverValue] = useState<number>(0);
+  const [editSpecialNotes, setEditSpecialNotes] = useState<string>('');
 
   // Mouse drag selection state
   const isMouseDownRef = useRef(false);
   const dragEmployeeIdRef = useRef<string | null>(null);
-  // Während eines Drags werden Stempel lokal gesammelt (State für sofortige
-  // visuelle Rückmeldung + Ref als Sync-Zugriff in den Maus-Handlern) und
-  // erst bei mouseUp in EINEM Save geschickt, statt pro überstrichener
-  // Zelle einen eigenen Server-Request auszulösen. Verhindert, dass beim
-  // schnellen Ziehen über mehrere Tage viele parallele PUTs entstehen, die
-  // sich gegenseitig überholen können (letzte Server-Antwort statt letzte
-  // tatsächliche Aktion gewinnt) - ohne dabei die bisherige Live-Vorschau
-  // beim Ziehen zu verlieren.
   const isDraggingRef = useRef(false);
   const dragAbsencesRef = useRef(db.absences);
   const [dragPreviewAbsences, setDragPreviewAbsences] = useState<typeof db.absences | null>(null);
@@ -228,12 +232,15 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
     if (!activeStamp) return;
 
     const sourceAbsences = isDraggingRef.current ? dragAbsencesRef.current : db.absences;
+    const mode = isDraggingRef.current ? (activeStamp === 'eraser' ? 'erase' : 'set') : 'toggle';
+
     const updatedAbsences = applyStampToEmployeeDate(
       sourceAbsences,
       db.departmentCode,
       employeeId,
       dateKey,
-      activeStamp
+      activeStamp,
+      mode
     );
 
     if (isDraggingRef.current) {
@@ -292,7 +299,9 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       rangeStartDate,
       rangeEndDate,
       rangeStamp,
-      rangeNote.trim() || undefined
+      rangeNote.trim() || undefined,
+      undefined,
+      rangeOnlyWorkingDays
     );
 
     onUpdateDB({
@@ -310,7 +319,38 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
     setRangeStartDate(startOfCurrentMonth);
     setRangeEndDate(startOfCurrentMonth);
     setRangeStamp(activeStamp && activeStamp !== 'eraser' ? activeStamp : 'urlaub');
+    setRangeOnlyWorkingDays(true);
     setRangeModalOpen(true);
+  };
+
+  // Quick vacation quota edit modal
+  const handleOpenQuotaModal = (emp: Employee) => {
+    setQuotaModalEmployee(emp);
+    setEditQuotaValue(emp.yearlyVacationQuota ?? 30);
+    setEditCarryoverValue(emp.vacationCarryoverDays ?? 0);
+    setEditSpecialNotes(emp.vacationSpecialNotes ?? '');
+  };
+
+  const handleSaveQuotaModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quotaModalEmployee) return;
+
+    const updatedEmployees = db.employees.map((emp) =>
+      emp.id === quotaModalEmployee.id
+        ? {
+            ...emp,
+            yearlyVacationQuota: editQuotaValue,
+            vacationCarryoverDays: editCarryoverValue,
+            vacationSpecialNotes: editSpecialNotes.trim(),
+          }
+        : emp
+    );
+
+    onUpdateDB({
+      ...db,
+      employees: updatedEmployees,
+    });
+    setQuotaModalEmployee(null);
   };
 
   // Quick week stamp (Mo-Fr of currently selected month day)
@@ -329,7 +369,9 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       firstDay,
       lastDay,
       activeStamp && activeStamp !== 'eraser' ? activeStamp : 'urlaub',
-      `Woche KW ${kw}`
+      `Woche KW ${kw}`,
+      undefined,
+      true
     );
 
     onUpdateDB({
@@ -337,6 +379,60 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
       absences: updated,
     });
   };
+
+  // Calculate vacation summary and quotas for all employees in selected year
+  const employeeVacationSummaries = useMemo(() => {
+    const map = new Map<string, EmployeeVacationSummary>();
+    db.employees.forEach((emp) => {
+      map.set(emp.id, calculateEmployeeVacationSummary(emp, displayAbsences, selectedYear));
+    });
+    return map;
+  }, [db.employees, displayAbsences, selectedYear]);
+
+  // Overdrawn employees warning list
+  const overdrawnVacationList = useMemo(() => {
+    const list: { employee: Employee; summary: EmployeeVacationSummary }[] = [];
+    db.employees
+      .filter((e) => e.active)
+      .forEach((emp) => {
+        const sum = employeeVacationSummaries.get(emp.id);
+        if (sum && sum.isOverdrawn) {
+          list.push({ employee: emp, summary: sum });
+        }
+      });
+    return list;
+  }, [db.employees, employeeVacationSummaries]);
+
+  // Real-time calculation for range stamp modal
+  const rangeModalSimulation = useMemo(() => {
+    if (!rangeEmployeeId || !rangeStartDate || !rangeEndDate) return null;
+    const emp = db.employees.find((e) => e.id === rangeEmployeeId);
+    if (!emp) return null;
+
+    const currentSummary = calculateEmployeeVacationSummary(emp, db.absences, selectedYear);
+    const dateCount = countVacationWorkingDays(
+      rangeStartDate <= rangeEndDate ? rangeStartDate : rangeEndDate,
+      rangeStartDate <= rangeEndDate ? rangeEndDate : rangeStartDate
+    );
+    const simulatedDays = rangeOnlyWorkingDays
+      ? dateCount.workingDays
+      : dateCount.workingDays + dateCount.weekendDays + dateCount.holidaysCount;
+
+    const projectedUsed =
+      rangeStamp === 'urlaub'
+        ? currentSummary.takenWorkingDays + simulatedDays
+        : currentSummary.takenWorkingDays;
+    const projectedRemaining = currentSummary.totalEntitlement - projectedUsed;
+    const projectedOverdrawn = projectedRemaining < 0;
+
+    return {
+      simulatedDays,
+      currentSummary,
+      projectedUsed,
+      projectedRemaining,
+      projectedOverdrawn,
+    };
+  }, [rangeEmployeeId, rangeStartDate, rangeEndDate, rangeStamp, rangeOnlyWorkingDays, db.employees, db.absences, selectedYear]);
 
   // Calculate day absence totals across department (for warning/capacity indicator)
   // Nutzt displayAbsences, damit Zähler/Konflikte während eines Drags live
@@ -392,6 +488,61 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
           setRangeModalOpen(true);
         }}
       />
+
+      {/* Overdrawn Vacation Warning Alert Panel */}
+      {overdrawnVacationList.length > 0 && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-100 text-red-700 rounded-xl shrink-0 mt-0.5">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-red-950 flex items-center gap-2">
+                  <span>Urlaubsanspruch für {selectedYear} überschritten!</span>
+                  <span className="bg-red-200 text-red-900 text-xs px-2 py-0.5 rounded-full font-mono">
+                    {overdrawnVacationList.length} Mitarbeiter
+                  </span>
+                </h4>
+                <p className="text-xs text-red-700 mt-1">
+                  Folgende Mitarbeiter haben mehr Arbeitstage Urlaub eingetragen als laut Jahreskontingent & Vorjahresübertrag zustehen:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">
+                  {overdrawnVacationList.map(({ employee, summary }) => (
+                    <div
+                      key={employee.id}
+                      className="bg-white/90 p-2.5 rounded-xl border border-red-200 flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900">
+                          {employee.lastName}, {employee.firstName}
+                        </div>
+                        <div className="text-[11px] text-red-700 font-mono mt-0.5">
+                          {summary.takenWorkingDays} von {summary.totalEntitlement} Tagen (+{summary.overdrawnDays} Tage zu viel)
+                        </div>
+                        {summary.specialNotes && (
+                          <div className="text-[10px] text-slate-500 truncate max-w-[180px]">
+                            {summary.specialNotes}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenQuotaModal(employee)}
+                        className="px-2.5 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-800 font-semibold text-[11px] cursor-pointer transition-colors shrink-0 ml-2"
+                        title="Urlaubskonto anpassen"
+                      >
+                        Anspruch anpassen
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Banner: Controls, Year & Stamp Palette */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
@@ -769,6 +920,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
               ) : (
                 employees.map((emp) => {
                   const stats = getEmployeeAnnualStats(displayAbsences, emp.id, selectedYear);
+                  const vacSummary = employeeVacationSummaries.get(emp.id) || calculateEmployeeVacationSummary(emp, displayAbsences, selectedYear);
                   const empConflictDates = employeeConflictDatesMap.get(emp.id);
                   const hasAnyConflict = empConflictDates && empConflictDates.size > 0;
 
@@ -776,9 +928,9 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                     <tr key={emp.id} className="hover:bg-blue-50/20 transition-colors">
                       {/* Left Sticky Employee Info */}
                       <td className={`sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2 px-3 border-r border-slate-200 shadow-xs ${
-                        hasAnyConflict ? 'border-l-4 border-l-amber-500' : ''
+                        hasAnyConflict ? 'border-l-4 border-l-amber-500' : vacSummary.isOverdrawn ? 'border-l-4 border-l-red-500' : ''
                       }`}>
-                        <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center justify-between gap-1.5">
                           <div className="truncate">
                             <div className="font-bold text-slate-900 truncate flex items-center gap-1.5">
                               <span>{emp.lastName}, {emp.firstName}</span>
@@ -789,10 +941,29 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                                 />
                               )}
                             </div>
-                            <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5">
+                            <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 flex-wrap">
                               <span>{emp.personnelNumber}</span>
                               <span>•</span>
                               <span className="capitalize">{emp.role}</span>
+                              <span>•</span>
+                              {/* Vacation Quota Badge */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuotaModal(emp)}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all hover:scale-105 ${
+                                  vacSummary.isOverdrawn
+                                    ? 'bg-red-100 text-red-900 border border-red-300'
+                                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                                }`}
+                                title={`Urlaubskonto bearbeiten (Klick)\nAnspruch: ${vacSummary.baseQuota} T. + ${vacSummary.carryover} T. Vorjahr = ${vacSummary.totalEntitlement} T.\nGenommen: ${vacSummary.takenWorkingDays} Arbeitstage (${vacSummary.takenCalendarDays} Kalendertage)\nRest: ${vacSummary.remainingDays} T.${vacSummary.specialNotes ? `\nHinweis: ${vacSummary.specialNotes}` : ''}`}
+                              >
+                                <span>U: {vacSummary.takenWorkingDays}/{vacSummary.totalEntitlement}</span>
+                                {vacSummary.isOverdrawn ? (
+                                  <span className="text-[9px] text-red-700">⚠️ +{vacSummary.overdrawnDays}</span>
+                                ) : (
+                                  <Sliders className="w-2.5 h-2.5 opacity-60" />
+                                )}
+                              </button>
                             </div>
                           </div>
 
@@ -872,13 +1043,20 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
 
                       {/* Right Annual Stats Column */}
                       <td className="py-2 px-3 border-l border-slate-200 text-center bg-slate-50/70 font-mono text-[11px]">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span
-                            className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold"
-                            title={`Urlaub: ${stats.urlaub} Kalendertage (davon ${stats.urlaubWorkingDays} echte Arbeitstage ohne Wochenenden/Feiertage)`}
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuotaModal(emp)}
+                            className={`px-1.5 py-0.5 rounded font-bold border transition-colors cursor-pointer ${
+                              vacSummary.isOverdrawn
+                                ? 'bg-red-100 text-red-950 border-red-400 animate-pulse'
+                                : 'bg-emerald-100 text-emerald-950 border-emerald-300 hover:bg-emerald-200'
+                            }`}
+                            title={`Urlaubskonto für ${emp.firstName} ${emp.lastName}:\n• Anspruch ${selectedYear}: ${vacSummary.baseQuota} Tage\n• Vorjahresübertrag: ${vacSummary.carryover} Tage\n• Gesamtanspruch: ${vacSummary.totalEntitlement} Tage\n• Genommen (Arbeitstage): ${vacSummary.takenWorkingDays} Tage\n• Genommen (Kalendertage): ${vacSummary.takenCalendarDays} Tage\n• Resturlaub: ${vacSummary.remainingDays} Tage${vacSummary.isOverdrawn ? `\n⚠️ Überschreitung um ${vacSummary.overdrawnDays} Tage!` : ''}${vacSummary.specialNotes ? `\n• Sonderregelung: ${vacSummary.specialNotes}` : ''}\n(Klicken zum Anpassen)`}
                           >
-                            U: {stats.urlaub}
-                          </span>
+                            U: {vacSummary.takenWorkingDays}/{vacSummary.totalEntitlement}
+                            {vacSummary.isOverdrawn && ' ⚠️'}
+                          </button>
                           <span
                             className="px-1.5 py-0.5 rounded bg-red-100 text-red-900 border border-red-300 font-bold"
                             title={`Krank: ${stats.krank} Tage`}
@@ -939,18 +1117,126 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
         </div>
       </div>
 
+      {/* Quick Vacation Quota & Entitlement Modal */}
+      {quotaModalEmployee && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <form
+            onSubmit={handleSaveQuotaModal}
+            className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-slate-900 text-base">
+                  Urlaubsanspruch anpassen: {quotaModalEmployee.firstName} {quotaModalEmployee.lastName}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuotaModalEmployee(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 space-y-1">
+              <div className="font-semibold flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-blue-600" />
+                <span>Individuelle Urlaubsansprüche & Sonderregelungen</span>
+              </div>
+              <p className="text-blue-800 text-[11px]">
+                Hier können Sie den Jahresanspruch (z. B. zusätzliche Urlaubstage wegen Behinderungsgrad/Prozenten, Schichtzulagen oder Teilzeit) und Resturlaub aus dem Vorjahr für diesen Mitarbeiter festlegen.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Jahresanspruch (Tage) *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="365"
+                  step="0.5"
+                  required
+                  value={editQuotaValue}
+                  onChange={(e) => setEditQuotaValue(parseFloat(e.target.value) || 0)}
+                  className="w-full text-sm font-mono border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 font-bold"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">Regulär i.d.R. 30 Tage</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Vorjahresübertrag (Tage)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="365"
+                  step="0.5"
+                  value={editCarryoverValue}
+                  onChange={(e) => setEditCarryoverValue(parseFloat(e.target.value) || 0)}
+                  className="w-full text-sm font-mono border border-slate-300 rounded-lg p-2.5 focus:border-blue-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">Mitgenommener Resturlaub</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-700">Gesamter Urlaubsanspruch {selectedYear}:</span>
+              <span className="font-mono font-black text-sm text-blue-700 bg-blue-100 px-2.5 py-1 rounded-lg">
+                {(editQuotaValue + editCarryoverValue).toFixed(1).replace('.0', '')} Tage
+              </span>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Begründung / Sondervereinbarung (z. B. GdB %, Teilzeit)
+              </label>
+              <textarea
+                rows={2}
+                value={editSpecialNotes}
+                onChange={(e) => setEditSpecialNotes(e.target.value)}
+                placeholder="Z. B. +5 Tage Zusatzurlaub nach § 208 SGB IX (GdB 50%), 4-Tage-Woche..."
+                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setQuotaModalEmployee(null)}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium cursor-pointer shadow-xs flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Speichern & Anwenden</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Range Stamp Modal (Zeitraum stempeln) */}
       {rangeModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
           <form
             onSubmit={handleSaveRangeStamp}
-            className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4 my-auto"
+            className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4 my-auto"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <CalendarRange className="w-5 h-5 text-blue-600" />
                 <h3 className="font-bold text-slate-900 text-base">
-                  Zeitraum stempeln
+                  Zeitraum stempeln & eintragen
                 </h3>
               </div>
               <button
@@ -971,7 +1257,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                 required
                 value={rangeEmployeeId}
                 onChange={(e) => setRangeEmployeeId(e.target.value)}
-                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 bg-white"
+                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:border-blue-500 bg-white font-medium"
               >
                 {db.employees
                   .filter((e) => e.active)
@@ -988,7 +1274,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
               <label className="text-xs font-semibold text-slate-700 block mb-1">
                 Stempel-Typ *
               </label>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                 {(
                   [
                     'urlaub',
@@ -1053,27 +1339,102 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
             </div>
 
             {/* Quick Presets */}
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-              <span className="font-semibold">Schnellwahl:</span>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span className="font-bold text-slate-700">Schnellwahl:</span>
               <button
                 type="button"
-                onClick={() => {
-                  setRangeEndDate(addDaysToDateStr(rangeStartDate, 4)); // 5 days (Mo-Fr)
-                }}
-                className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                onClick={() => setRangeEndDate(rangeStartDate)}
+                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-700 text-slate-700 font-medium cursor-pointer shadow-2xs transition-colors"
               >
-                +1 Woche (5 Tage)
+                1 Tag
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setRangeEndDate(addDaysToDateStr(rangeStartDate, 11)); // 2 weeks
-                }}
-                className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                onClick={() => setRangeEndDate(addDaysToDateStr(rangeStartDate, 4))}
+                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-700 text-slate-700 font-medium cursor-pointer shadow-2xs transition-colors"
               >
-                +2 Wochen
+                +5 Tage (Mo-Fr)
+              </button>
+              <button
+                type="button"
+                onClick={() => setRangeEndDate(addDaysToDateStr(rangeStartDate, 11))}
+                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-700 text-slate-700 font-medium cursor-pointer shadow-2xs transition-colors"
+              >
+                +2 Wochen (10 AT)
+              </button>
+              <button
+                type="button"
+                onClick={() => setRangeEndDate(addDaysToDateStr(rangeStartDate, 18))}
+                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-700 text-slate-700 font-medium cursor-pointer shadow-2xs transition-colors"
+              >
+                +3 Wochen (15 AT)
+              </button>
+              <button
+                type="button"
+                onClick={() => setRangeEndDate(addDaysToDateStr(rangeStartDate, 25))}
+                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-700 text-slate-700 font-medium cursor-pointer shadow-2xs transition-colors"
+              >
+                +4 Wochen (20 AT)
               </button>
             </div>
+
+            {/* Working Days Checkbox */}
+            <label className="flex items-start gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100/80 transition-colors">
+              <input
+                type="checkbox"
+                checked={rangeOnlyWorkingDays}
+                onChange={(e) => setRangeOnlyWorkingDays(e.target.checked)}
+                className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+              />
+              <div className="text-xs">
+                <span className="font-bold text-slate-800 block">
+                  Nur reguläre Arbeitstage stempeln (Wochenenden & Feiertage überspringen)
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Empfohlen für Urlaub & Zeitausgleich, damit keine Urlaubstage an Samstagen, Sonntagen oder Feiertagen verbraucht werden.
+                </span>
+              </div>
+            </label>
+
+            {/* Real-time Calculation & Quota Preview */}
+            {rangeModalSimulation && (
+              <div
+                className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                  rangeModalSimulation.projectedOverdrawn && rangeStamp === 'urlaub'
+                    ? 'bg-red-50 border-red-300 text-red-900'
+                    : 'bg-slate-50 border-slate-200 text-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between font-semibold">
+                  <span>Effektive Tage in diesem Zeitraum:</span>
+                  <span className="font-mono font-bold text-sm bg-white px-2 py-0.5 rounded border border-slate-200">
+                    {rangeModalSimulation.simulatedDays} {rangeOnlyWorkingDays ? 'Arbeitstage' : 'Kalendertage'}
+                  </span>
+                </div>
+
+                {rangeStamp === 'urlaub' && (
+                  <div className="pt-1.5 border-t border-slate-200/80 space-y-1 text-[11px]">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Aktuell verbraucht:</span>
+                      <span className="font-mono font-medium">{rangeModalSimulation.currentSummary.takenWorkingDays} / {rangeModalSimulation.currentSummary.totalEntitlement} Tage</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span>Neuer Stand nach Eintragung:</span>
+                      <span className={`font-mono ${rangeModalSimulation.projectedOverdrawn ? 'text-red-700' : 'text-emerald-700'}`}>
+                        {rangeModalSimulation.projectedUsed} / {rangeModalSimulation.currentSummary.totalEntitlement} Tage
+                        ({rangeModalSimulation.projectedRemaining >= 0 ? `${rangeModalSimulation.projectedRemaining} Tage Rest` : `⚠️ ${Math.abs(rangeModalSimulation.projectedRemaining)} Tage Überziehung`})
+                      </span>
+                    </div>
+                    {rangeModalSimulation.projectedOverdrawn && (
+                      <div className="text-red-700 font-semibold flex items-center gap-1 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>Achtung: Der Urlaubsanspruch wird um {Math.abs(rangeModalSimulation.projectedRemaining)} Tage überschritten!</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Optional Note */}
             <div>
@@ -1084,7 +1445,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                 type="text"
                 value={rangeNote}
                 onChange={(e) => setRangeNote(e.target.value)}
-                placeholder="Z.B. Sommerurlaub genehmigt, AU bis Freitag..."
+                placeholder="Z.B. Sommerurlaub genehmigt, Sonderurlaub Hochzeit..."
                 className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:border-blue-500"
               />
             </div>
@@ -1100,9 +1461,10 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium cursor-pointer shadow-xs"
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium cursor-pointer shadow-xs flex items-center gap-1.5"
               >
-                Zeitraum stempeln
+                <CalendarRange className="w-3.5 h-3.5" />
+                <span>Zeitraum jetzt eintragen</span>
               </button>
             </div>
           </form>
@@ -1111,3 +1473,4 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
     </div>
   );
 };
+

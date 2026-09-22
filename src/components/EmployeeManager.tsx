@@ -52,6 +52,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
       phone: '',
       notes: '',
       active: true,
+      yearlyVacationQuota: 30,
+      vacationCarryoverDays: 0,
+      vacationSpecialNotes: '',
     };
     setEditingEmployee(newEmp);
     setIsNew(true);
@@ -215,6 +218,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
               <tr className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
                 <th className="py-3 px-4">Mitarbeiter / Pers.-Nr.</th>
                 <th className="py-3 px-4">Rolle</th>
+                <th className="py-3 px-4">Urlaubsanspruch (Jahr)</th>
                 <th className="py-3 px-4">Schichtmodell</th>
                 <th className="py-3 px-4">Rotationssequenz (Manuell)</th>
                 <th className="py-3 px-4">Eingewiesene Maschinen</th>
@@ -225,12 +229,16 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
             <tbody className="divide-y divide-slate-200">
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     Keine Mitarbeiter gefunden.
                   </td>
                 </tr>
               ) : (
                 filteredEmployees.map((emp) => {
+                  const quota = emp.yearlyVacationQuota ?? 30;
+                  const carry = emp.vacationCarryoverDays ?? 0;
+                  const total = quota + carry;
+
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50/70 transition-colors">
                       {/* Name */}
@@ -270,6 +278,25 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
                         {emp.role === 'springer' && (
                           <span className="text-[11px] font-medium bg-purple-100 text-purple-900 px-2 py-0.5 rounded-full">
                             Springer / Aushilfe
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Vacation Quota */}
+                      <td className="py-3 px-4 font-mono text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-900 bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded border border-emerald-200">
+                            {total} Tage
+                          </span>
+                          {carry > 0 && (
+                            <span className="text-[10px] text-slate-500" title={`Basis ${quota} + Übertrag ${carry}`}>
+                              (+{carry} Vorjahr)
+                            </span>
+                          )}
+                        </div>
+                        {emp.vacationSpecialNotes && (
+                          <span className="text-[10px] text-slate-500 truncate max-w-[150px] block mt-0.5" title={emp.vacationSpecialNotes}>
+                            {emp.vacationSpecialNotes}
                           </span>
                         )}
                       </td>
@@ -848,6 +875,93 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
                     );
                   })
                 )}
+              </div>
+            </div>
+
+            {/* Vacation Entitlement & Special Quotas (Urlaubsanspruch & Sonderregelungen) */}
+            <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                    Jahresurlaubsanspruch & Sonderurlaub
+                  </span>
+                  <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md">
+                    Gesamt: {(editingEmployee.yearlyVacationQuota ?? 30) + (editingEmployee.vacationCarryoverDays ?? 0)} Tage
+                  </span>
+                </div>
+                <span className="text-[11px] text-emerald-700 hidden sm:inline">
+                  Automatische Warnung bei Überschreitung
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Regulärer Jahresurlaub (Tage) *
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={60}
+                    required
+                    value={editingEmployee.yearlyVacationQuota ?? 30}
+                    onChange={(e) =>
+                      setEditingEmployee({
+                        ...editingEmployee,
+                        yearlyVacationQuota: parseInt(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2.5 bg-white focus:border-emerald-500"
+                    placeholder="Standard: 30"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Gesetzlicher / tariflicher Standard: 30 Tage (oder mehr bei Zusatzvereinbarungen)
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Resturlaub aus Vorjahr (Übertrag)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={40}
+                    value={editingEmployee.vacationCarryoverDays ?? 0}
+                    onChange={(e) =>
+                      setEditingEmployee({
+                        ...editingEmployee,
+                        vacationCarryoverDays: parseInt(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2.5 bg-white focus:border-emerald-500"
+                    placeholder="0"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Wird zum Jahresanspruch addiert
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Sonderurlaub / Prozent-Regelung / Begründung (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editingEmployee.vacationSpecialNotes ?? ''}
+                  onChange={(e) =>
+                    setEditingEmployee({
+                      ...editingEmployee,
+                      vacationSpecialNotes: e.target.value,
+                    })
+                  }
+                  placeholder="Z.B. '5 Tage Zusatzurlaub wegen 50% GdB', 'Teilzeit 80% (24 Tage)', 'Betriebszugehörigkeit >15 Jahre'"
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white focus:border-emerald-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Hier eintragen, warum dieser Mitarbeiter mehr oder abweichende Tage (z. B. wegen GdB-Prozenten oder Teilzeit) hat.
+                </span>
               </div>
             </div>
 
