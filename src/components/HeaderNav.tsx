@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { DepartmentDatabase } from '../types';
 import { detectMachineVacationConflicts } from '../lib/absenceUtils';
+import { checkServerConnection } from '../lib/storage';
 import { ArcanePixelsBrand } from './ArcanePixelsBrand';
 
 export type ActiveTab = 'wochenplan' | 'maschinen' | 'mitarbeiter' | 'abwesenheiten' | 'layout' | 'anleitung';
@@ -40,6 +41,16 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
   onImportClick,
   onPrintPreviewClick,
 }) => {
+  const [isServerOnline, setIsServerOnline] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    checkServerConnection().then(setIsServerOnline);
+    const interval = setInterval(() => {
+      checkServerConnection().then(setIsServerOnline);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   const vacationConflicts = React.useMemo(() => {
     return detectMachineVacationConflicts(db.employees, db.machines, db.absences);
   }, [db.employees, db.machines, db.absences]);
@@ -99,13 +110,26 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                 <span>Admin</span>
               </button>
             )}
-            <span
-              className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-medium"
-              title="Alle Daten liegen sicher auf dem internen Firmen-Server im Intranet. Kein Byte verlässt das Netzwerk."
-            >
-              <Database className="w-3 h-3 text-emerald-600" />
-              <span>Intranet-DB</span>
-            </span>
+            {isServerOnline === true && (
+              <span
+                className="hidden lg:inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-medium"
+                title="Zentraler Intranet-Server aktiv: Alle Änderungen werden direkt auf dem Firmenserver gespeichert und in Echtzeit synchronisiert."
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <Database className="w-3 h-3 text-emerald-600" />
+                <span>Intranet-DB</span>
+              </span>
+            )}
+            {isServerOnline === false && (
+              <span
+                className="hidden md:inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-800 text-[11px] font-medium"
+                title="Kein Intranet-Server erreichbar (z. B. auf Vercel Cloud Demo). Die Anwendung läuft im Browser-Modus und speichert alle Daten lokal."
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <Database className="w-3 h-3 text-amber-600" />
+                <span>Browser-Modus (Demo)</span>
+              </span>
+            )}
           </div>
         </div>
 

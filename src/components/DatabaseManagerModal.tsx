@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DepartmentDatabase } from '../types';
-import { exportDepartmentJSON, importDepartmentJSON, createSeedDepartmentDatabase } from '../lib/storage';
-import { Download, Upload, RefreshCcw, Database, CheckCircle, AlertTriangle, FileCode } from 'lucide-react';
+import { exportDepartmentJSON, importDepartmentJSON, createSeedDepartmentDatabase, checkServerConnection } from '../lib/storage';
+import { Download, Upload, RefreshCcw, Database, CheckCircle, AlertTriangle, FileCode, Info } from 'lucide-react';
 
 interface DatabaseManagerModalProps {
   db: DepartmentDatabase;
@@ -20,6 +20,13 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({
 }) => {
   const [importText, setImportText] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isServerOnline, setIsServerOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkServerConnection().then(setIsServerOnline);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -95,22 +102,40 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({
         </div>
 
         {/* Info stats */}
-        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs grid grid-cols-2 gap-2">
-          <div>
-            <span className="text-slate-500 block">Aktive Abteilung:</span>
-            <span className="font-mono font-bold text-blue-700 text-sm">{db.departmentCode}</span>
+        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-2.5">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <span className="text-slate-500 block">Aktive Abteilung:</span>
+              <span className="font-mono font-bold text-blue-700 text-sm">{db.departmentCode}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Abteilungsname:</span>
+              <span className="font-medium text-slate-800">{db.departmentName}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Maschinen im Bestand:</span>
+              <span className="font-mono font-semibold">{db.machines.length} Maschinen</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Mitarbeiter registriert:</span>
+              <span className="font-mono font-semibold">{db.employees.length} Personen</span>
+            </div>
           </div>
-          <div>
-            <span className="text-slate-500 block">Abteilungsname:</span>
-            <span className="font-medium text-slate-800">{db.departmentName}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block">Maschinen im Bestand:</span>
-            <span className="font-mono font-semibold">{db.machines.length} Maschinen</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block">Mitarbeiter registriert:</span>
-            <span className="font-mono font-semibold">{db.employees.length} Personen</span>
+
+          <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+            <span className="text-slate-500">Speicher-Betriebsmodus:</span>
+            {isServerOnline === true && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                Intranet-Server (Aktiv & Synchronisiert)
+              </span>
+            )}
+            {isServerOnline === false && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-medium text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                Browser-Modus (Demo / Lokaler Speicher)
+              </span>
+            )}
           </div>
         </div>
 

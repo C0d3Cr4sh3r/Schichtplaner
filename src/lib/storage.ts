@@ -7,6 +7,28 @@ const LOCAL_ADMIN_PASSWORD_KEY = 'schichtplan_admin_password';
 
 export const DEFAULT_ADMIN_PASSWORD = 'Industrie2025!';
 
+let cachedServerStatus: { online: boolean; timestamp: number } | null = null;
+
+export async function checkServerConnection(force = false): Promise<boolean> {
+  const now = Date.now();
+  if (!force && cachedServerStatus && (now - cachedServerStatus.timestamp < 10000)) {
+    return cachedServerStatus.online;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('/api/departments', { signal: controller.signal });
+    clearTimeout(timeoutId);
+    const isOnline = res.ok;
+    cachedServerStatus = { online: isOnline, timestamp: now };
+    return isOnline;
+  } catch {
+    cachedServerStatus = { online: false, timestamp: now };
+    return false;
+  }
+}
+
 export interface DepartmentInfo {
   code: string;
   name: string;

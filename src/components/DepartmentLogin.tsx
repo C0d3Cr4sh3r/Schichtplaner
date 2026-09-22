@@ -32,6 +32,7 @@ import {
   DEFAULT_ADMIN_PASSWORD,
   createNewDepartmentAsync,
   changeAdminPasswordAsync,
+  checkServerConnection,
 } from '../lib/storage';
 import { ArcanePixelsBrand } from './ArcanePixelsBrand';
 
@@ -78,6 +79,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
 
   // Copy feedback state
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [isServerOnline, setIsServerOnline] = useState<boolean | null>(null);
 
   const loadDepartments = async () => {
     const list = await listRegisteredDepartmentsAsync();
@@ -86,6 +88,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
 
   useEffect(() => {
     loadDepartments();
+    checkServerConnection().then(setIsServerOnline);
   }, []);
 
   useEffect(() => {
@@ -247,11 +250,30 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
                   </p>
                 </div>
               </div>
-              <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1 rounded-full">
-                <Database className="w-3.5 h-3.5" />
-                Lokale Intranet-Datenbank (On-Premise)
-              </span>
+              {isServerOnline === true && (
+                <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <Database className="w-3.5 h-3.5" />
+                  Intranet-Server (On-Premise)
+                </span>
+              )}
+              {isServerOnline === false && (
+                <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-amber-400 bg-amber-950/60 border border-amber-500/40 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  <Database className="w-3.5 h-3.5" />
+                  Browser-Modus (Demo)
+                </span>
+              )}
             </div>
+
+            {isServerOnline === false && (
+              <div className="p-3 bg-amber-950/40 border border-amber-500/30 text-amber-200/90 rounded-xl text-xs flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong className="text-amber-300">Hinweis zur Demo-Umgebung:</strong> Da aktuell keine Verbindung zu einem internen Firmen-Datenbankserver besteht (z. B. auf Vercel), läuft die Anwendung im Browser-Modus und speichert alle Daten lokal auf diesem Gerät.
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleEnterWithCode} className="space-y-4">
               <div className="space-y-1.5">
