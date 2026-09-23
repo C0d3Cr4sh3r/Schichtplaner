@@ -15,9 +15,9 @@ export type AbsenceType =
 export interface Employee {
   id: string;
   departmentCode: string;
-  personnelNumber: string;
-  firstName: string;
-  lastName: string;
+  personnelNumber?: string; // Optional: Personalnummer (für den Schichtplan nicht zwingend erforderlich)
+  firstName?: string; // Optional: Vorname oder Spitzname / Kürzel
+  lastName?: string; // Optional: Nachname oder Anzeigename
   role: RoleId; // Teamleiter, Schichtführer, Mitarbeiter, Springer
   shiftModel: ShiftModelType; // 1, 2 oder 3 Schichten
   excludedShifts: ShiftId[]; // z.B. kein Nachtdienst ('nacht')

@@ -22,7 +22,7 @@ import {
   HelpCircle,
   Check,
 } from 'lucide-react';
-import { SHIFT_SHORT_NAMES, SHIFT_NAMES } from '../lib/rotationEngine';
+import { SHIFT_SHORT_NAMES, SHIFT_NAMES, formatEmployeeName } from '../lib/rotationEngine';
 
 interface EmployeeManagerProps {
   db: DepartmentDatabase;
@@ -39,7 +39,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
     const newEmp: Employee = {
       id: `e-${Date.now()}`,
       departmentCode: db.departmentCode,
-      personnelNumber: `P-${String(1000 + db.employees.length + 1)}`,
+      personnelNumber: '',
       firstName: '',
       lastName: '',
       role: 'mitarbeiter',
@@ -64,11 +64,25 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
     e.preventDefault();
     if (!editingEmployee) return;
 
+    // Graceful fallback if completely empty
+    const sanitizedEmp: Employee = {
+      ...editingEmployee,
+      firstName: editingEmployee.firstName?.trim() || '',
+      lastName: editingEmployee.lastName?.trim() || '',
+      personnelNumber: editingEmployee.personnelNumber?.trim() || '',
+    };
+
+    // If completely blank, give a friendly shift worker label
+    if (!sanitizedEmp.firstName && !sanitizedEmp.lastName && !sanitizedEmp.personnelNumber) {
+      sanitizedEmp.firstName = `Mitarbeiter`;
+      sanitizedEmp.lastName = `${db.employees.length + 1}`;
+    }
+
     let updatedList = [...db.employees];
     if (isNew) {
-      updatedList.push(editingEmployee);
+      updatedList.push(sanitizedEmp);
     } else {
-      updatedList = updatedList.map((emp) => (emp.id === editingEmployee.id ? editingEmployee : emp));
+      updatedList = updatedList.map((emp) => (emp.id === sanitizedEmp.id ? sanitizedEmp : emp));
     }
 
     onUpdateDB({
@@ -143,9 +157,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const match =
-        emp.firstName.toLowerCase().includes(q) ||
-        emp.lastName.toLowerCase().includes(q) ||
-        emp.personnelNumber.toLowerCase().includes(q);
+        (emp.firstName && emp.firstName.toLowerCase().includes(q)) ||
+        (emp.lastName && emp.lastName.toLowerCase().includes(q)) ||
+        (emp.personnelNumber && emp.personnelNumber.toLowerCase().includes(q));
       if (!match) return false;
     }
     return true;
@@ -244,10 +258,14 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
                       {/* Name */}
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-900 text-sm">
-                          {emp.firstName} {emp.lastName}
+                          {formatEmployeeName(emp)}
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1.5 mt-0.5">
-                          <span>{emp.personnelNumber}</span>
+                          {emp.personnelNumber?.trim() ? (
+                            <span>{emp.personnelNumber}</span>
+                          ) : (
+                            <span className="text-slate-400 font-sans italic text-[10px]">Keine Pers.-Nr.</span>
+                          )}
                           {!emp.active && (
                             <span className="text-red-600 bg-red-50 px-1.5 rounded text-[10px]">
                               Inaktiv
@@ -432,40 +450,51 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
               </button>
             </div>
 
-            {/* Basic Info */}
+            {/* Friendly hint about optional fields */}
+            <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 flex items-start gap-2 text-xs text-blue-900">
+              <span className="font-bold text-blue-600 shrink-0">💡</span>
+              <p>
+                <strong>Schichtplan-Fokus:</strong> Alle Felder sind optional. Für den Schichtplan genügt ein Vorname, Nachname, Spitzname oder Arbeitsplatz-Kürzel. Die Personalnummer ist nicht zwingend erforderlich.
+              </p>
+            </div>
+
+            {/* Basic Info (All Optional) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Vorname *</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Vorname / Rufname <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
                 <input
                   type="text"
-                  required
-                  value={editingEmployee.firstName}
+                  value={editingEmployee.firstName || ''}
                   onChange={(e) => setEditingEmployee({ ...editingEmployee, firstName: e.target.value })}
-                  placeholder="Z.B. Thomas"
+                  placeholder="Z.B. Thomas oder Tom"
                   className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Nachname *</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Nachname / Anzeigename <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
                 <input
                   type="text"
-                  required
-                  value={editingEmployee.lastName}
+                  value={editingEmployee.lastName || ''}
                   onChange={(e) => setEditingEmployee({ ...editingEmployee, lastName: e.target.value })}
-                  placeholder="Z.B. Müller"
+                  placeholder="Z.B. Müller oder Bediener 1"
                   className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Personalnummer *</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Personalnummer <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
                 <input
                   type="text"
-                  required
-                  value={editingEmployee.personnelNumber}
+                  value={editingEmployee.personnelNumber || ''}
                   onChange={(e) =>
                     setEditingEmployee({ ...editingEmployee, personnelNumber: e.target.value })
                   }
-                  placeholder="P-1015"
+                  placeholder="Z.B. P-1015 (oder leer)"
                   className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2.5 focus:border-blue-500"
                 />
               </div>

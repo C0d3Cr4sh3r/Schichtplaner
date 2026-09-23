@@ -75,7 +75,8 @@ export const UserManual: React.FC = () => {
             { id: 'abwesenheiten', label: '5. Urlaub, Feiertage & Konflikte', icon: CalendarOff },
             { id: 'layout', label: '6. DIN-A4 Layout & PDF-Druck', icon: Printer },
             { id: 'backup', label: '7. Backup, Sync & Speicher', icon: Database },
-            { id: 'faq', label: '8. FAQ & Fehlerbehebung', icon: HelpCircle },
+            { id: 'datenschutz', label: '8. Datenschutz & DSGVO', icon: ShieldCheck },
+            { id: 'faq', label: '9. FAQ & Fehlerbehebung', icon: HelpCircle },
           ].map((sec) => {
             const Icon = sec.icon;
             return (
@@ -603,11 +604,72 @@ export const UserManual: React.FC = () => {
           </section>
         )}
 
-        {/* Section 8: FAQ and Troubleshooting */}
+        {/* Section 8: Datenschutz & DSGVO */}
+        {(activeSection === 'all' || activeSection === 'datenschutz') && (
+          <section id="datenschutz" className="mb-12 scroll-mt-20 print:mb-8 break-inside-avoid-page">
+            <h2 className="font-display font-extrabold text-slate-900 text-xl mb-4 flex items-center gap-2 pb-1.5 border-b border-slate-100">
+              <span className="text-blue-600">8.</span> Datenschutz, DSGVO & Sicherheit
+            </h2>
+
+            <div className="space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-950">
+                <span className="font-bold block text-sm mb-1 text-emerald-900">
+                  Vollständige DSGVO-Konformität & 100% lokale Datenhoheit
+                </span>
+                SchichtPlan Pro wurde speziell für industrielle Betriebe mit hohen Datenschutz- und Betriebsratsanforderungen entwickelt.
+                Es findet keine Datenverarbeitung in externen Clouds oder durch Dritte statt.
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div className="p-3.5 border border-slate-200 rounded-xl bg-white space-y-1.5">
+                  <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-blue-600" />
+                    Besondere Kategorien (Art. 9 DSGVO)
+                  </span>
+                  <p className="text-slate-600 leading-relaxed">
+                    Bei Arbeitsunfähigkeit (AU) und Sonderurlaub/GdB werden ausschließlich Datum und Status erfasst. Es werden <strong>keinerlei Diagnosen, Befunde oder medizinische Details</strong> gespeichert.
+                  </p>
+                </div>
+
+                <div className="p-3.5 border border-slate-200 rounded-xl bg-white space-y-1.5">
+                  <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Lock className="w-4 h-4 text-blue-600" />
+                    Passwort-Sicherheit (scrypt)
+                  </span>
+                  <p className="text-slate-600 leading-relaxed">
+                    Admin-Passwörter werden serverseitig mit dem kryptografischen Algorithmus <code>scrypt</code> inklusive individuellem Salt gehasht. Ein Brute-Force-Schutz blockiert wiederholte Fehlversuche.
+                  </p>
+                </div>
+
+                <div className="p-3.5 border border-slate-200 rounded-xl bg-white space-y-1.5">
+                  <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Download className="w-4 h-4 text-blue-600" />
+                    Betroffenenrechte (Art. 15–21)
+                  </span>
+                  <p className="text-slate-600 leading-relaxed">
+                    Über den <strong>DB Export</strong> kann jederzeit eine strukturierte JSON-Auskunft erteilt werden. Mitarbeiter können inaktiviert oder dauerhaft gelöscht werden.
+                  </p>
+                </div>
+
+                <div className="p-3.5 border border-slate-200 rounded-xl bg-white space-y-1.5">
+                  <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-blue-600" />
+                    Mandantentrennung
+                  </span>
+                  <p className="text-slate-600 leading-relaxed">
+                    Jede Abteilung besitzt ihre eigene, isolierte Datenbankdatei im Firmen-Intranet. Keine Vermischung mit anderen Werksbereichen.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Section 9: FAQ and Troubleshooting */}
         {(activeSection === 'all' || activeSection === 'faq') && (
           <section id="faq" className="mb-12 scroll-mt-20 print:mb-8 break-inside-avoid-page">
             <h2 className="font-display font-extrabold text-slate-900 text-xl mb-4 flex items-center gap-2 pb-1.5 border-b border-slate-100">
-              <span className="text-blue-600">8.</span> FAQ & Häufige Fragen
+              <span className="text-blue-600">9.</span> FAQ & Häufige Fragen
             </h2>
 
             <div className="space-y-4">

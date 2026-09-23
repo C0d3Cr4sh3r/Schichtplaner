@@ -460,3 +460,43 @@ export function generateMultiWeekPlan(
 
   return result;
 }
+
+/**
+ * Format employee display name gracefully even when firstName, lastName or personnelNumber are omitted/blank
+ */
+export function formatEmployeeName(emp?: Partial<Employee> | null, defaultFallback: string = 'Mitarbeiter'): string {
+  if (!emp) return defaultFallback;
+  const parts = [emp.firstName?.trim(), emp.lastName?.trim()].filter(Boolean);
+  if (parts.length > 0) return parts.join(' ');
+  if (emp.personnelNumber?.trim()) return emp.personnelNumber.trim();
+  return defaultFallback;
+}
+
+/**
+ * Format employee as "LastName, FirstName" or single name / personnel number
+ */
+export function formatEmployeeLastFirst(emp?: Partial<Employee> | null, defaultFallback: string = 'Mitarbeiter'): string {
+  if (!emp) return defaultFallback;
+  const first = emp.firstName?.trim();
+  const last = emp.lastName?.trim();
+  if (last && first) return `${last}, ${first}`;
+  if (last) return last;
+  if (first) return first;
+  if (emp.personnelNumber?.trim()) return emp.personnelNumber.trim();
+  return defaultFallback;
+}
+
+/**
+ * Get 1-2 character initials for avatar circles
+ */
+export function getEmployeeInitials(emp?: Partial<Employee> | null, defaultFallback: string = 'M'): string {
+  if (!emp) return defaultFallback;
+  const first = emp.firstName?.trim();
+  const last = emp.lastName?.trim();
+  if (first && last) return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+  if (first) return first.substring(0, 2).toUpperCase();
+  if (last) return last.substring(0, 2).toUpperCase();
+  if (emp.personnelNumber?.trim()) return emp.personnelNumber.trim().substring(0, 2).toUpperCase();
+  return defaultFallback;
+}
+

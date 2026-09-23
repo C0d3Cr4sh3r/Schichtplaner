@@ -1,121 +1,133 @@
 # Datenschutzerklärung & Technische und Organisatorische Maßnahmen (TOM)
 
-**SchichtPlan Pro** — Stand: 2026-09-21
+**SchichtPlan Pro** — Stand: 23. September 2026
 
-> **Hinweis:** Dieses Dokument beschreibt wahrheitsgemäß, wie die Software technisch funktioniert und welche Daten sie verarbeitet. Es ersetzt keine rechtliche Prüfung durch eine Datenschutzbeauftragte / einen Datenschutzbeauftragten oder den Betriebsrat. Vor dem produktiven Einsatz mit echten Mitarbeiterdaten sollte dieses Dokument von der zuständigen Stelle geprüft und ggf. um betriebsspezifische Angaben (Verantwortlicher, Kontaktdaten, Aufbewahrungsfristen) ergänzt werden.
+> **Hinweis:** Dieses Dokument beschreibt wahrheitsgemäß, wie die Software technisch funktioniert und welche Daten sie verarbeitet. Es dient als Vorlage und Dokumentation für die Datenschutzbeauftragte / den Datenschutzbeauftragten (DSB) und den Betriebsrat. Vor dem produktiven Einsatz mit echten Mitarbeiterdaten sollte dieses Dokument um betriebsspezifische Angaben (konkreter Verantwortlicher, Kontaktdaten des DSB, Aufbewahrungsfristen) ergänzt werden.
 
 ---
 
 ## 1. Verantwortlicher
 
-Verantwortlich für die Datenverarbeitung ist der Betrieb, der die Software einsetzt (der Arbeitgeber). SchichtPlan Pro ist eine intern betriebene Software ohne eigenen Betreiber-Zugriff auf die Daten — es findet keine Verarbeitung durch Dritte statt (siehe Abschnitt 4).
+Verantwortlich für die Datenverarbeitung ist der Betrieb, der die Software einsetzt (der Arbeitgeber). SchichtPlan Pro ist eine intern im Firmennetz betriebene Software ohne Betreiber-Zugriff auf die Daten — es findet keine Verarbeitung durch Dritte statt (siehe Abschnitt 4).
 
-*[Hier: Name und Kontaktdaten des Betriebs / der verantwortlichen Stelle ergänzen, bevor das Dokument final vorgelegt wird.]*
+*[Hier: Name und Kontaktdaten des Betriebs / der verantwortlichen Stelle sowie des betrieblichen Datenschutzbeauftragten ergänzen.]*
 
-## 2. Zweck der Datenverarbeitung
+---
 
-SchichtPlan Pro dient der betriebsinternen Personal- und Schichtplanung:
+## 2. Zweck der Datenverarbeitung & Rechtsgrundlagen
 
-- Zuordnung von Mitarbeitenden zu Maschinen und Schichten (Früh/Spät/Nacht)
-- Automatisierte wöchentliche Rotationsplanung
-- Erfassung von Abwesenheiten (Urlaub, Krankheit, Karenztage, Zeitausgleich, Weiterbildung, Sonderurlaub) zur Kapazitätsplanung
-- Erstellung druckfähiger Wochenschichtpläne (DIN-A4)
+SchichtPlan Pro dient der betriebsinternen Personal-, Schicht- und Kapazitätsplanung:
 
-Rechtsgrundlage ist im Regelfall die Erfüllung des Arbeitsvertrags bzw. ein berechtigtes betriebliches Interesse an der Personaleinsatzplanung (Art. 6 Abs. 1 lit. b bzw. f DSGVO), ggf. in Verbindung mit einer Betriebsvereinbarung. *[Konkrete Rechtsgrundlage bitte mit dem Betriebsrat/Datenschutzbeauftragten abstimmen.]*
+- Zuordnung von Beschäftigten zu Maschinen, Fertigungslinien und Schichten (Früh-, Spät-, Nachtschicht)
+- Automatisierte wöchentliche Rotationsplanung unter Beachtung von Ruhezeiten und Schichtrhythmen
+- Erfassung und Verwaltung von Urlaubsansprüchen (Jahreskontingent, Vorjahresübertrag, Sonderregelungen wie z. B. Zusatzurlaub bei Grad der Behinderung / GdB oder vertragliche Teilzeitquoten)
+- Erfassung von Abwesenheiten (Erholungsurlaub, Arbeitsunfähigkeit / AU, Karenztage, Zeitausgleich, Weiterbildung, Sonderurlaub) zur Sicherstellung der Mindestbesetzung
+- Erstellung druckfähiger Wochenschichtpläne (DIN-A4) für den Aushang im Betrieb
+
+### Rechtsgrundlagen:
+- **Art. 6 Abs. 1 lit. b DSGVO i.V.m. § 26 Abs. 1 BDSG:** Erforderlichkeit für die Durchführung und Abwicklung des Beschäftigungsverhältnisses.
+- **Art. 6 Abs. 1 lit. c DSGVO i.V.m. Arbeitszeitgesetz (ArbZG):** Erfüllung gesetzlicher Arbeitsschutz- und Dokumentationspflichten (z. B. Höchstarbeitszeiten, Ruhezeiten).
+- **Art. 88 DSGVO i.V.m. Betriebsvereinbarung:** Sofern eine Betriebsvereinbarung zur Schichtplanung oder zum Urlaubsmanagement vorliegt.
+- **Art. 9 Abs. 2 lit. b DSGVO i.V.m. § 26 Abs. 3 BDSG:** Für die Erfassung von Arbeitsunfähigkeitszeiten (AU) sowie Schwerbehinderten-Zusatzurlaub nach § 208 SGB IX.
+
+---
 
 ## 3. Verarbeitete Datenkategorien
 
-Die Software speichert pro Abteilung folgende Daten:
+Die Software speichert pro Abteilung ausschließlich zweckgebundene Daten:
 
-### Mitarbeiterdaten
+### Mitarbeiterdaten (Stammdaten)
 - Vor- und Nachname
 - Personalnummer
-- Rolle (Teamleiter, Schichtführer, Mitarbeiter, Springer)
-- Schichtmodell und Rotationseinstellungen
-- Qualifikation für bestimmte Maschinen
-- Telefonnummer (**optional**, nur falls von der Schichtleitung eingetragen)
-- Freitext-Notizen (**optional**, nur falls eingetragen)
+- Betriebliche Rolle (Teamleiter, Schichtführer, Mitarbeiter, Springer)
+- Schichtmodell (1-, 2-, 3-Schicht) und individuelle Rotationsabfolgen
+- Qualifikationen für bestimmte Maschinen/Anlagen
+- Telefonnummer (**optional**, nur falls betrieblich von der Schichtleitung hinterlegt)
+- Freitext-Notizen (**optional**)
+- Aktiv-Status (zur Einschränkung der Verarbeitung / Archivierung)
+
+### Urlaubs- und Kontingentdaten
+- Jahresurlaubsanspruch in Tagen (Regulär i.d.R. 30 Tage)
+- Vorjahresübertrag in Resturlaubstagen
+- Freitext-Vermerk zu Sonderansprüchen (z. B. „+5 Tage Zusatzurlaub nach § 208 SGB IX (GdB 50%)“, „4-Tage-Woche (24 Tage Jahresanspruch)“)
 
 ### Abwesenheitsdaten
-- Zeitraum der Abwesenheit
-- **Art der Abwesenheit**, darunter auch „Krank/AU" — das ist eine **Gesundheitsangabe und damit eine besondere Kategorie personenbezogener Daten nach Art. 9 DSGVO**. Es wird ausschließlich der Status „krank" erfasst, keine Diagnose, keine medizinischen Details.
+- Zeitraum der Abwesenheit (Startdatum, Enddatum)
+- **Art der Abwesenheit:**
+  - *Urlaub* (Erholungsurlaub)
+  - *Krank/AU* (Arbeitsunfähigkeit — **Gesundheitsdatum nach Art. 9 DSGVO**)
+  - *Karenz* (Eltern-/Pflegekarenz)
+  - *Zeitausgleich* (Überstundenabbau)
+  - *Weiterbildung* (Schulung/Fortbildung)
+  - *Sonderurlaub* (Hochzeit, Umzug, Pflegefall etc.)
 - Optionale Freitext-Notiz zur Abwesenheit
 - Optionale Vertretungszuordnung
 
 ### Maschinendaten (keine personenbezogenen Daten)
-Maschinenbezeichnung, Standort, Schichtmodell, Status.
+Maschinenbezeichnung, Standort/Halle, Schichtmodell, Mindestbesetzung, Status.
 
 ### Zugangsdaten
-- Das für den Mitarbeiterzugang genutzte Abteilungskürzel ist kein personenbezogenes Datum (kein individuelles Konto pro Person).
-- Für den Admin-Zugang wird ein einzelnes, geteiltes Passwort verwendet (siehe Abschnitt 6, TOM).
-
-**Wichtig wegen Art. 9 DSGVO:** Da der Status „Krank/AU" erfasst wird, sollte der Betrieb vor Einsatz prüfen, ob eine Betriebsvereinbarung oder eine andere geeignete Rechtsgrundlage für diese besondere Kategorie vorliegt, und den Zugriffskreis entsprechend eng halten (siehe Abschnitt 6).
-
-## 4. Empfänger der Daten / Datenweitergabe an Dritte
-
-**Es findet grundsätzlich keine Datenübermittlung an Dritte statt.** Die Anwendung ist bewusst so gebaut, dass sie ohne jede Cloud-Anbindung läuft:
-
-- Kein externer API-Aufruf zur Laufzeit (keine KI-Dienste, keine Analytics, kein Tracking, keine Cloud-Datenbank).
-- Alle Daten liegen ausschließlich als Dateien auf dem Server, der im lokalen Firmennetz betrieben wird.
-- Kein Zugriff des Software-Entwicklers (ArcanePixels) auf die Betriebsdaten — es gibt keine Fernwartungs- oder Telemetrie-Funktion.
-
-**Ausnahme — aktuelle Testphase:** Für die Vorführung/Prüfung vor der internen Freigabe läuft aktuell eine öffentlich erreichbare **Demo-Version bei Vercel Inc.** (USA), einem externen Hosting-Anbieter. Diese Demo:
-
-- enthält ausschließlich **fiktive Testdaten**, keine echten Namen, Personalnummern oder sonstigen Daten realer Mitarbeitender,
-- dient ausschließlich der technischen Vorführung,
-- wird **abgeschaltet, sobald ein internes Testsystem im Firmennetz zur Verfügung steht**.
-
-Solange diese Demo läuft, dürfen dort **keine echten Personaldaten** eingegeben werden. Für den produktiven Einsatz ist ausschließlich der lokale Betrieb im Firmennetz vorgesehen (siehe README.md, Abschnitt „Architektur").
-
-## 5. Speicherdauer / Löschung
-
-Daten bleiben gespeichert, bis sie manuell durch eine berechtigte Person (Admin-Zugang) geändert oder gelöscht werden, bzw. bis eine ganze Abteilung gelöscht wird. Es gibt aktuell **keine automatische Löschfrist**. *[Empfehlung: betriebliche Löschregelung festlegen, z.B. Abwesenheitsdaten nach Ablauf der gesetzlichen Aufbewahrungspflichten löschen — diese Funktion müsste bei Bedarf noch ergänzt werden.]*
-
-## 6. Technische und organisatorische Maßnahmen (TOM)
-
-### 6.1 Zutrittskontrolle
-Der Server läuft auf einem firmeneigenen Rechner im lokalen Netz. Physischer Zutrittsschutz zu diesem Rechner liegt in der Verantwortung des Betriebs (z.B. Serverraum, Zugriffsschutz auf den Host).
-
-### 6.2 Zugangskontrolle
-- Mitarbeitende betreten ihre Abteilung über ein Abteilungskürzel. Es findet keine individuelle Authentifizierung pro Person statt — die Zugangskontrolle beschränkt sich auf die Abteilungsebene.
-- Der Admin-Bereich (Abteilungen anlegen/löschen, Passwort ändern) ist durch ein Passwort geschützt.
-- Das Admin-Passwort wird serverseitig **gehasht** gespeichert (Node.js `crypto.scrypt`, mit individuellem Salt pro Passwort), niemals im Klartext.
-- Nach 5 fehlgeschlagenen Anmeldeversuchen sperrt der Server weitere Versuche von derselben Netzwerkadresse für 30 Sekunden (Schutz gegen automatisiertes Ausprobieren).
-- Das mitgelieferte Standardpasswort sollte unmittelbar nach der Ersteinrichtung geändert werden.
-
-### 6.3 Zugriffskontrolle (innerhalb der Anwendung)
-- Jede Abteilung ist als eigene, getrennte Datei gespeichert — Mitarbeitende einer Abteilung sehen ausschließlich die Daten ihrer eigenen Abteilung, nicht die anderer Abteilungen.
-- Der Krankheitsstatus ist im Kalender für alle Personen sichtbar, die Zugang zur jeweiligen Abteilung haben (typischerweise die Schicht-/Betriebsleitung sowie ggf. das Team). Der Zugriffskreis ergibt sich aus der Weitergabe des Abteilungskürzels und sollte vom Betrieb entsprechend eng gehalten werden.
-
-### 6.4 Weitergabekontrolle
-- Keine Datenübertragung an Dritte im Produktivbetrieb (siehe Abschnitt 4).
-- Datenübertragung zwischen Browser und Server erfolgt innerhalb des lokalen Netzes. *[Empfehlung: HTTPS/TLS für die interne Verbindung einrichten, falls das Firmennetz das erfordert — aktuell läuft die Anwendung per HTTP, was in einem vertrauenswürdigen, abgeschotteten LAN ein geringeres Risiko darstellt als im Internet, aber vor Produktivbetrieb mit der IT-Abteilung abgestimmt werden sollte.]*
-
-### 6.5 Eingabekontrolle
-Jede Änderung an einer Abteilung erhält einen Zeitstempel (`lastModified`) und eine fortlaufende Versionsnummer. Dadurch ist erkennbar, wann zuletzt Änderungen vorgenommen wurden. Es gibt aktuell **kein detailliertes Audit-Log** (wer genau welche einzelne Änderung vorgenommen hat), da es keine individuelle Anmeldung pro Mitarbeiter gibt — dies ist eine bekannte Einschränkung, siehe Abschnitt 7.
-
-### 6.6 Verfügbarkeitskontrolle
-- Alle Schreibvorgänge auf die Datenbankdateien erfolgen atomar (über eine temporäre Datei mit anschließendem Umbenennen), damit ein Absturz des Servers mitten im Speichern nicht zu einer beschädigten oder leeren Datei führt.
-- Bei gleichzeitiger Bearbeitung derselben Abteilung durch mehrere Personen wird ein Konflikt erkannt (optimistisches Locking über eine Versionsnummer) und die zuletzt gespeicherte Änderung nicht stillschweigend überschrieben.
-- Es gibt aktuell **kein automatisiertes Backup** der Datendateien. *[Empfehlung: regelmäßige Datensicherung des `data`-Verzeichnisses durch die IT-Abteilung einrichten.]*
-
-### 6.7 Auftragskontrolle / Auftragsverarbeitung
-Da keine Datenverarbeitung durch Dritte stattfindet (mit Ausnahme der temporären, datenfreien Vercel-Demo, siehe Abschnitt 4), ist im Produktivbetrieb **kein Auftragsverarbeitungsvertrag (AVV)** erforderlich.
-
-## 7. Bekannte Einschränkungen (Stand dieses Dokuments)
-
-Für die vollständige rechtliche Bewertung transparent aufgeführt:
-
-- Keine individuelle Benutzeranmeldung pro Mitarbeiter, dadurch kein lückenloses Audit-Log auf Personenebene.
-- Keine automatische Löschfrist für Abwesenheits- oder Mitarbeiterdaten.
-- Keine automatisierte Datensicherung.
-- Datenübertragung im lokalen Netz aktuell ohne Verschlüsselung (HTTP statt HTTPS) — vor Produktivbetrieb mit der IT abzustimmen.
-- Die Zugriffstrennung erfolgt auf Abteilungsebene, nicht auf Ebene einzelner Datenfelder (z.B. sieht jede Person mit Abteilungszugang auch den Krankheitsstatus aller Kolleg:innen der Abteilung).
-
-## 8. Betroffenenrechte
-
-Mitarbeitende haben das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung ihrer Daten (Art. 15–18 DSGVO). Da alle Daten lokal und ohne Cloud-Anbindung gespeichert werden, können Auskunfts- und Löschanfragen direkt über den Admin-Zugang der Software bearbeitet werden (Export als JSON über die „DB Export"-Funktion, Bearbeitung/Löschung einzelner Datensätze über die Mitarbeiterverwaltung).
+- Das für den Mitarbeiterzugang genutzte Abteilungskürzel ist kein personenbezogenes Datum (kein individuelles Benutzerkonto pro Person).
+- Für den Admin-Bereich wird ein kryptografisch gehashtes Passwort verwendet (siehe Abschnitt 6).
 
 ---
 
-*Dieses Dokument wurde auf Basis des tatsächlichen Codestands erstellt (Commit-Stand siehe Git-Historie des Repositories) und sollte bei wesentlichen Änderungen an der Architektur (z.B. Einführung neuer externer Dienste) aktualisiert werden.*
+## 4. Besondere Schutzmaßnahmen für Gesundheitsdaten (Art. 9 DSGVO)
+
+Da die Abwesenheitsarten „Krank/AU“ und ggf. Vermerke zu Schwerbehindertenzusatzurlaub (GdB) verarbeitet werden, gelten strenge Grundsätze:
+
+1. **Strikte Datensparsamkeit:** Es wird ausschließlich der Status der Abwesenheit erfasst. **Es werden niemals Diagnosen, ICD-10-Codes, Arztberichte oder medizinische Details erfasst oder gespeichert.**
+2. **Zweckbindung:** Die Daten dienen einzig der Kapazitäts- und Schichtbesetzungsplanung sowie der Urlaubsanspruchsführung.
+3. **Zugriffskreis:** Der Zugriff ist auf Personen mit Kenntnis des Abteilungskürzels bzw. die Schicht-/Betriebsleitung beschränkt.
+
+---
+
+## 5. Empfänger der Daten / Datenweitergabe an Dritte
+
+**Es findet grundsätzlich keine Datenübermittlung an Dritte statt.** Die Anwendung ist so konzipiert, dass sie vollständig ohne externe Cloud-Dienste läuft:
+
+- **Kein Tracking / Keine Telemetrie:** Keine Einbindung von Google Analytics, Facebook Pixeln oder Werbenetzwerken.
+- **Keine Cloud-Datenbank:** Alle Daten liegen lokal auf dem firmeneigenen Server im Intranet (`./data/departments/*.json`).
+- **Kein Entwickler-Zugriff:** Der Software-Hersteller (ArcanePixels) hat zu keinem Zeitpunkt Zugriff auf Ihre Unternehmens- oder Mitarbeiterdaten.
+
+---
+
+## 6. Speicherdauer & Löschkonzept (Art. 17 DSGVO)
+
+- Daten bleiben gespeichert, bis sie manuell durch berechtigte Personen (Schichtleitung / Admin) geändert oder gelöscht werden.
+- **Mitarbeiterlöschung:** Scheidet ein Mitarbeiter aus, kann er mitsamt aller verknüpften Abwesenheiten über die Mitarbeiterverwaltung unwiderruflich gelöscht werden.
+- **Abteilungsauflösung:** Ganze Abteilungen können im Admin-Bereich gelöscht werden.
+- **Archivierung:** Mitarbeiter können auf „Inaktiv“ gesetzt werden, um sie aus der aktiven Schichtplanung herauszunehmen, ohne bestehende historische Daten zu vernichten.
+
+---
+
+## 7. Technische und organisatorische Maßnahmen (TOM) gem. Art. 32 DSGVO
+
+### 7.1 Mandantentrennung & Zugriffskontrolle
+- Jede Abteilung ist in einer eigenständigen, physisch getrennten JSON-Datei gespeichert.
+- Zugriff auf eine Abteilung erfolgt isoliert über das jeweilige Abteilungskürzel.
+
+### 7.2 Authentifizierung & Passworthashing
+- Das Admin-Passwort wird auf dem Server mittels **scrypt** (kryptografisches 16-Byte Salt, 64-Byte Schlüssel) gehasht gespeichert. Ein Speichern im Klartext findet nicht statt.
+- **Brute-Force-Schutz:** Nach 5 fehlgeschlagenen Anmeldeversuchen sperrt der Server Anfragen für 30 Sekunden.
+
+### 7.3 Datenintegrität & Atomare Speicherung
+- Schreibvorgänge auf die JSON-Datenbankdateien erfolgen **atomar** (Erstellung einer temporären Datei mit anschließendem POSIX-Rename). Ein Absturz oder Stromausfall führt nicht zu beschädigten Dateien.
+- Optimistisches Locking über Versionsnummern verhindert unbemerktes Überschreiben bei parallelem Arbeiten im Intranet.
+
+### 7.4 Datensicherheit & Export
+- Über die Funktion **„DB Export (JSON)“** können jederzeit vollständige Backups erstellt werden.
+
+---
+
+## 8. Betroffenenrechte (Art. 15–21 DSGVO)
+
+Beschäftigte haben das Recht auf:
+- **Auskunft (Art. 15 DSGVO) & Datenübertragbarkeit (Art. 20 DSGVO):** Erfüllbar über die Export-Funktion (maschinenlesbares JSON).
+- **Berichtigung (Art. 16 DSGVO):** Sofortige Korrektur in den jeweiligen Modulen.
+- **Löschung (Art. 17 DSGVO):** Löschung von Datensätzen per Klick.
+- **Einschränkung der Verarbeitung (Art. 18 DSGVO):** Status „Inaktiv“ bei ruhenden Arbeitsverhältnissen.
+
+---
+
+*Dieses Dokument entspricht dem aktuellen Stand der Software SchichtPlan Pro (Version 2026.9).*

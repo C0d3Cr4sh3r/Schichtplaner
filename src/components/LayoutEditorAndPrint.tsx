@@ -4,6 +4,8 @@ import {
   generateWeekSchedule,
   getISOWeek,
   SHIFT_SHORT_NAMES,
+  formatEmployeeName,
+  formatEmployeeLastFirst,
 } from '../lib/rotationEngine';
 import {
   Printer,
@@ -505,7 +507,7 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                           return leaders.map((leader) => (
                             <div key={leader.id} className="mt-0.5">
                               <span className="font-bold text-slate-900 block leading-tight">
-                                {leader.firstName} {leader.lastName}
+                                {formatEmployeeName(leader)}
                               </span>
                               {settings.showStaffPhone && leader.phone && (
                                 <span className="font-mono text-[9px] text-slate-600 block">
@@ -533,7 +535,7 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                           return leaders.map((leader) => (
                             <div key={leader.id} className="mt-0.5">
                               <span className="font-bold text-slate-900 block leading-tight">
-                                {leader.firstName} {leader.lastName}
+                                {formatEmployeeName(leader)}
                               </span>
                               {settings.showStaffPhone && leader.phone && (
                                 <span className="font-mono text-[9px] text-slate-600 block">
@@ -561,7 +563,7 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                           return leaders.map((leader) => (
                             <div key={leader.id} className="mt-0.5">
                               <span className="font-bold text-slate-900 block leading-tight">
-                                {leader.firstName} {leader.lastName}
+                                {formatEmployeeName(leader)}
                               </span>
                               {settings.showStaffPhone && leader.phone && (
                                 <span className="font-mono text-[9px] text-slate-600 block">
@@ -619,7 +621,10 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                       <td className="py-1 px-2 border-r border-black align-top">
                         {shifts.frueh.map((e) => (
                           <div key={e.id} className="leading-tight font-medium">
-                            • {e.lastName}, {e.firstName} <span className="font-mono text-[8px] text-slate-500">({e.personnelNumber})</span>
+                            • {formatEmployeeLastFirst(e)}{' '}
+                            {e.personnelNumber && (
+                              <span className="font-mono text-[8px] text-slate-500">({e.personnelNumber})</span>
+                            )}
                           </div>
                         ))}
                         {shifts.frueh.length === 0 && (
@@ -634,7 +639,10 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                         ) : (
                           shifts.spaet.map((e) => (
                             <div key={e.id} className="leading-tight font-medium">
-                              • {e.lastName}, {e.firstName} <span className="font-mono text-[8px] text-slate-500">({e.personnelNumber})</span>
+                              • {formatEmployeeLastFirst(e)}{' '}
+                              {e.personnelNumber && (
+                                <span className="font-mono text-[8px] text-slate-500">({e.personnelNumber})</span>
+                              )}
                             </div>
                           ))
                         )}
@@ -650,7 +658,10 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                         ) : (
                           shifts.nacht.map((e) => (
                             <div key={e.id} className="leading-tight font-medium">
-                              • {e.lastName}, {e.firstName} <span className="font-mono text-[8px] text-slate-500">({e.personnelNumber})</span>
+                              • {formatEmployeeLastFirst(e)}{' '}
+                              {e.personnelNumber && (
+                                <span className="font-mono text-[8px] text-slate-500">({e.personnelNumber})</span>
+                              )}
                             </div>
                           ))
                         )}
@@ -669,7 +680,7 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                   <span className="font-bold text-slate-900 mr-1">Abwesenheiten (Urlaub / Krank / Karenz):</span>
                   {schedule.absentEmployees.map((a, i) => (
                     <span key={a.employee.id} className="inline-block mr-2 font-medium">
-                      [{a.type === 'krank' ? 'K' : a.type === 'urlaub' ? 'U' : a.type === 'karenz' ? 'KT' : a.type === 'zeitausgleich' ? 'ZA' : a.type === 'weiterbildung' ? 'W' : 'SU'}] {a.employee.lastName} ({a.affectedDaysText})
+                      [{a.type === 'krank' ? 'K' : a.type === 'urlaub' ? 'U' : a.type === 'karenz' ? 'KT' : a.type === 'zeitausgleich' ? 'ZA' : a.type === 'weiterbildung' ? 'W' : 'SU'}] {formatEmployeeLastFirst(a.employee)} ({a.affectedDaysText})
                       {i < schedule.absentEmployees.length - 1 ? ',' : ''}
                     </span>
                   ))}

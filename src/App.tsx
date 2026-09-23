@@ -19,6 +19,8 @@ import { LayoutEditorAndPrint } from './components/LayoutEditorAndPrint';
 import { DatabaseManagerModal } from './components/DatabaseManagerModal';
 import { ArcanePixelsBrand } from './components/ArcanePixelsBrand';
 import { UserManual } from './components/UserManual';
+import { PrivacyModal } from './components/PrivacyModal';
+import { ShieldCheck } from 'lucide-react';
 
 export type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'error' } | { kind: 'conflict' };
 
@@ -27,6 +29,7 @@ export default function App() {
   const [currentDB, setCurrentDB] = useState<DepartmentDatabase | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('wochenplan');
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   const [isAdminModeRequested, setIsAdminModeRequested] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: 'idle' });
   // Ref statt nur State: das Polling-Intervall (siehe unten) greift per
@@ -238,16 +241,32 @@ export default function App() {
         onImportSuccess={handleImportSuccess}
       />
 
+      {/* Privacy / DSGVO Modal */}
+      <PrivacyModal
+        isOpen={isPrivacyModalOpen}
+        onClose={() => setIsPrivacyModalOpen(false)}
+        departmentCode={currentDB.departmentCode}
+      />
+
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-3 text-xs text-slate-500 no-print">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-center sm:text-left">
+          <div className="flex items-center gap-2 text-center sm:text-left flex-wrap">
             <span>
               SchichtPlan Pro • Abteilung{' '}
               <strong className="font-mono text-slate-800">{currentDB.departmentCode}</strong> (Isolierte
               Datenbank)
             </span>
             <span className="hidden md:inline">• Wöchentliche automatisierte Rotation</span>
+            <span className="hidden sm:inline">•</span>
+            <button
+              type="button"
+              onClick={() => setIsPrivacyModalOpen(true)}
+              className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-700 font-medium underline cursor-pointer transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Datenschutzerklärung & DSGVO</span>
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <span>Entwickelt von</span>

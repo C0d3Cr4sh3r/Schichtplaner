@@ -377,10 +377,13 @@ export function calculateEmployeeVacationSummary(
   const percentUsed =
     totalEntitlement > 0 ? Math.round((takenWorkingDays / totalEntitlement) * 100) : 0;
 
+  const parts = [emp.lastName?.trim(), emp.firstName?.trim()].filter(Boolean);
+  const employeeName = parts.length > 0 ? parts.join(', ') : (emp.personnelNumber?.trim() || 'Mitarbeiter');
+
   return {
     employeeId: emp.id,
-    employeeName: `${emp.lastName}, ${emp.firstName}`,
-    personnelNumber: emp.personnelNumber,
+    employeeName,
+    personnelNumber: emp.personnelNumber || '',
     role: emp.role,
     baseQuota,
     carryover,

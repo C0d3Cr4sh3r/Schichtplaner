@@ -17,6 +17,7 @@ import {
 import { YearlyAbsenceCalendar } from './YearlyAbsenceCalendar';
 import { ABSENCE_CONFIGS, calculateEmployeeVacationSummary } from '../lib/absenceUtils';
 import { countVacationWorkingDays } from '../lib/holidayUtils';
+import { formatEmployeeName, formatEmployeeLastFirst } from '../lib/rotationEngine';
 
 interface AbsenceManagerProps {
   db: DepartmentDatabase;
@@ -257,10 +258,10 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
                             {emp ? (
                               <div>
                                 <span className="font-semibold text-slate-900">
-                                  {emp.firstName} {emp.lastName}
+                                  {formatEmployeeName(emp)}
                                 </span>
                                 <span className="text-[11px] text-slate-500 font-mono block">
-                                  {emp.personnelNumber} • {emp.role}
+                                  {emp.personnelNumber ? `${emp.personnelNumber} • ` : ''}{emp.role}
                                 </span>
                               </div>
                             ) : (
@@ -294,7 +295,7 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
                               <div className="flex items-center gap-1.5 text-slate-900">
                                 <UserCheck className="w-3.5 h-3.5 text-blue-600" />
                                 <span>
-                                  {sub.firstName} {sub.lastName}
+                                  {formatEmployeeName(sub)}
                                 </span>
                               </div>
                             ) : (
@@ -368,7 +369,7 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
               >
                 {db.employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
-                    {emp.lastName}, {emp.firstName} ({emp.personnelNumber} - {emp.role})
+                    {formatEmployeeLastFirst(emp)} {emp.personnelNumber ? `(${emp.personnelNumber} - ${emp.role})` : `(${emp.role})`}
                   </option>
                 ))}
               </select>
@@ -426,7 +427,7 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
                 </div>
                 {editingAbsence.type === 'urlaub' && (
                   <div className="pt-1.5 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
-                    <span>Urlaubskonto {modalSimulation.emp.firstName} {modalSimulation.emp.lastName}:</span>
+                    <span>Urlaubskonto {formatEmployeeName(modalSimulation.emp)}:</span>
                     <span className="font-mono font-bold text-blue-700">
                       Anspruch: {modalSimulation.summary.totalEntitlement} T. • Aktuell verbraucht: {modalSimulation.summary.takenWorkingDays} T.
                     </span>
@@ -451,7 +452,7 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ db, onUpdateDB }
                   .filter((e) => e.id !== editingAbsence.employeeId)
                   .map((emp) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.lastName}, {emp.firstName} ({emp.role})
+                      {formatEmployeeLastFirst(emp)} ({emp.role})
                     </option>
                   ))}
               </select>

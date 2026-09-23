@@ -5,6 +5,7 @@ import {
   VacationMachineConflict,
   ABSENCE_CONFIGS,
 } from '../lib/absenceUtils';
+import { formatEmployeeLastFirst, getEmployeeInitials } from '../lib/rotationEngine';
 import {
   AlertTriangle,
   ChevronDown,
@@ -183,16 +184,17 @@ export const VacationConflictAlertPanel: React.FC<VacationConflictAlertPanelProp
                             >
                               <div className="flex items-center gap-2 truncate">
                                 <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-700 shrink-0">
-                                  {employee.firstName.charAt(0)}
-                                  {employee.lastName.charAt(0)}
+                                  {getEmployeeInitials(employee)}
                                 </div>
                                 <div className="truncate">
                                   <span className="font-bold text-slate-900">
-                                    {employee.lastName}, {employee.firstName}
+                                    {formatEmployeeLastFirst(employee)}
                                   </span>
-                                  <span className="text-[10px] text-slate-400 ml-1.5 font-mono">
-                                    ({employee.personnelNumber})
-                                  </span>
+                                  {employee.personnelNumber && (
+                                    <span className="text-[10px] text-slate-400 ml-1.5 font-mono">
+                                      ({employee.personnelNumber})
+                                    </span>
+                                  )}
                                   {absenceNote && (
                                     <span className="text-[10px] text-slate-500 italic block truncate">
                                       „{absenceNote}“

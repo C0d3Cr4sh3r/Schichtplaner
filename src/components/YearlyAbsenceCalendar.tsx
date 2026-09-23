@@ -14,7 +14,7 @@ import {
   parseISODate,
   detectMachineVacationConflicts,
 } from '../lib/absenceUtils';
-import { getISOWeek } from '../lib/rotationEngine';
+import { getISOWeek, formatEmployeeName, formatEmployeeLastFirst } from '../lib/rotationEngine';
 import { getHolidayForDate, getHolidaysForYear, countVacationWorkingDays, PublicHoliday } from '../lib/holidayUtils';
 import { VacationConflictAlertPanel } from './VacationConflictAlertPanel';
 import {
@@ -95,9 +95,9 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase();
         return (
-          e.firstName.toLowerCase().includes(q) ||
-          e.lastName.toLowerCase().includes(q) ||
-          e.personnelNumber.toLowerCase().includes(q)
+          (e.firstName || '').toLowerCase().includes(q) ||
+          (e.lastName || '').toLowerCase().includes(q) ||
+          (e.personnelNumber || '').toLowerCase().includes(q)
         );
       })
       .sort((a, b) => {
@@ -105,7 +105,9 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
         const scoreA = a.role === 'teamleiter' ? 3 : a.role === 'schichtfuehrer' ? 2 : 1;
         const scoreB = b.role === 'teamleiter' ? 3 : b.role === 'schichtfuehrer' ? 2 : 1;
         if (scoreB !== scoreA) return scoreB - scoreA;
-        return a.lastName.localeCompare(b.lastName);
+        return (a.lastName || a.firstName || a.personnelNumber || '').localeCompare(
+          b.lastName || b.firstName || b.personnelNumber || ''
+        );
       });
   }, [db.employees, filterRole, searchQuery]);
 
@@ -516,7 +518,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                     >
                       <div>
                         <div className="font-bold text-slate-900">
-                          {employee.lastName}, {employee.firstName}
+                          {formatEmployeeLastFirst(employee)}
                         </div>
                         <div className="text-[11px] text-red-700 font-mono mt-0.5">
                           {summary.takenWorkingDays} von {summary.totalEntitlement} Tagen (+{summary.overdrawnDays} Tage zu viel)
@@ -933,7 +935,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                         <div className="flex items-center justify-between gap-1.5">
                           <div className="truncate">
                             <div className="font-bold text-slate-900 truncate flex items-center gap-1.5">
-                              <span>{emp.lastName}, {emp.firstName}</span>
+                              <span>{formatEmployeeLastFirst(emp)}</span>
                               {hasAnyConflict && (
                                 <span
                                   className="w-2 h-2 rounded-full bg-amber-500 shrink-0 inline-block animate-pulse"
@@ -942,8 +944,8 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                               )}
                             </div>
                             <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 flex-wrap">
-                              <span>{emp.personnelNumber}</span>
-                              <span>•</span>
+                              {emp.personnelNumber && <span>{emp.personnelNumber}</span>}
+                              {emp.personnelNumber && <span>•</span>}
                               <span className="capitalize">{emp.role}</span>
                               <span>•</span>
                               {/* Vacation Quota Badge */}
@@ -1263,7 +1265,7 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
                   .filter((e) => e.active)
                   .map((emp) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.lastName}, {emp.firstName} ({emp.personnelNumber} - {emp.role})
+                      {formatEmployeeLastFirst(emp)} {emp.personnelNumber ? `(${emp.personnelNumber} - ${emp.role})` : `(${emp.role})`}
                     </option>
                   ))}
               </select>

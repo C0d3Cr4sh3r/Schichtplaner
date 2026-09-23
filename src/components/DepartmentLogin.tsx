@@ -35,6 +35,7 @@ import {
   checkServerConnection,
 } from '../lib/storage';
 import { ArcanePixelsBrand } from './ArcanePixelsBrand';
+import { PrivacyModal } from './PrivacyModal';
 
 interface DepartmentLoginProps {
   onLogin: (deptCode: string) => void;
@@ -45,6 +46,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   onLogin,
   initialAdminMode = false,
 }) => {
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   // Navigation mode: 'enter' (Mitarbeiter: Kürzel eingeben), 'admin-login' (Passwort), 'admin-panel' (Verwaltung)
   const [viewMode, setViewMode] = useState<'enter' | 'admin-login' | 'admin-panel'>(
     initialAdminMode ? 'admin-login' : 'enter'
@@ -874,10 +876,19 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
 
         {/* ArcanePixels Footer & Link */}
         <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span>SchichtPlan Pro</span>
             <span>•</span>
             <span>Mandantensichere Schichtplanung</span>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setIsPrivacyModalOpen(true)}
+              className="inline-flex items-center gap-1 text-slate-400 hover:text-blue-400 underline cursor-pointer transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Datenschutzerklärung & DSGVO</span>
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <span>Entwickelt von</span>
@@ -889,6 +900,11 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
           </div>
         </div>
 
+        {/* Privacy / DSGVO Modal */}
+        <PrivacyModal
+          isOpen={isPrivacyModalOpen}
+          onClose={() => setIsPrivacyModalOpen(false)}
+        />
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ import {
   SHIFT_SHORT_NAMES,
   SHIFT_COLORS,
   calculateEmployeeShiftForWeek,
+  formatEmployeeName,
 } from '../lib/rotationEngine';
 import { ABSENCE_CONFIGS, detectMachineVacationConflicts } from '../lib/absenceUtils';
 import { VacationConflictAlertPanel } from './VacationConflictAlertPanel';
@@ -428,10 +429,10 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
             {currentSchedule.teamLeader ? (
               <div>
                 <h4 className="font-bold text-base text-white">
-                  {currentSchedule.teamLeader.firstName} {currentSchedule.teamLeader.lastName}
+                  {formatEmployeeName(currentSchedule.teamLeader)}
                 </h4>
                 <p className="text-xs text-slate-400 font-mono">
-                  {currentSchedule.teamLeader.personnelNumber} {currentSchedule.teamLeader.phone && `• ${currentSchedule.teamLeader.phone}`}
+                  {currentSchedule.teamLeader.personnelNumber ? currentSchedule.teamLeader.personnelNumber : ''} {currentSchedule.teamLeader.phone && `• ${currentSchedule.teamLeader.phone}`}
                 </p>
               </div>
             ) : (
@@ -484,10 +485,10 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                   leaders.map((leader) => (
                     <div key={leader.id} className="bg-white/80 border border-amber-200/80 rounded-md p-1.5">
                       <h4 className="font-bold text-sm text-slate-900 leading-tight">
-                        {leader.firstName} {leader.lastName}
+                        {formatEmployeeName(leader)}
                       </h4>
                       <p className="text-xs text-slate-600 font-mono">
-                        {leader.personnelNumber} {leader.phone && `• ${leader.phone}`}
+                        {leader.personnelNumber || ''} {leader.phone && `• ${leader.phone}`}
                       </p>
                     </div>
                   ))
@@ -543,10 +544,10 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                   leaders.map((leader) => (
                     <div key={leader.id} className="bg-white/80 border border-blue-200/80 rounded-md p-1.5">
                       <h4 className="font-bold text-sm text-slate-900 leading-tight">
-                        {leader.firstName} {leader.lastName}
+                        {formatEmployeeName(leader)}
                       </h4>
                       <p className="text-xs text-slate-600 font-mono">
-                        {leader.personnelNumber} {leader.phone && `• ${leader.phone}`}
+                        {leader.personnelNumber || ''} {leader.phone && `• ${leader.phone}`}
                       </p>
                     </div>
                   ))
@@ -602,10 +603,10 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                   leaders.map((leader) => (
                     <div key={leader.id} className="bg-white/80 border border-indigo-200/80 rounded-md p-1.5">
                       <h4 className="font-bold text-sm text-slate-900 leading-tight">
-                        {leader.firstName} {leader.lastName}
+                        {formatEmployeeName(leader)}
                       </h4>
                       <p className="text-xs text-slate-600 font-mono">
-                        {leader.personnelNumber} {leader.phone && `• ${leader.phone}`}
+                        {leader.personnelNumber || ''} {leader.phone && `• ${leader.phone}`}
                       </p>
                     </div>
                   ))
@@ -729,11 +730,13 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                               >
                                 <div>
                                   <span className="font-medium text-slate-900 block">
-                                    {emp.firstName} {emp.lastName}
+                                    {formatEmployeeName(emp)}
                                   </span>
-                                  <span className="text-[10px] text-slate-500 font-mono">
-                                    {emp.personnelNumber}
-                                  </span>
+                                  {emp.personnelNumber && (
+                                    <span className="text-[10px] text-slate-500 font-mono">
+                                      {emp.personnelNumber}
+                                    </span>
+                                  )}
                                 </div>
                                 <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100" />
                               </div>
@@ -794,11 +797,13 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                                 >
                                   <div>
                                     <span className="font-medium text-slate-900 block">
-                                    {emp.firstName} {emp.lastName}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500 font-mono">
-                                    {emp.personnelNumber}
-                                  </span>
+                                      {formatEmployeeName(emp)}
+                                    </span>
+                                    {emp.personnelNumber && (
+                                      <span className="text-[10px] text-slate-500 font-mono">
+                                        {emp.personnelNumber}
+                                      </span>
+                                    )}
                                   </div>
                                   <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100" />
                                 </div>
@@ -860,11 +865,13 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                                 >
                                   <div>
                                     <span className="font-medium text-slate-900 block">
-                                    {emp.firstName} {emp.lastName}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500 font-mono">
-                                    {emp.personnelNumber}
-                                  </span>
+                                      {formatEmployeeName(emp)}
+                                    </span>
+                                    {emp.personnelNumber && (
+                                      <span className="text-[10px] text-slate-500 font-mono">
+                                        {emp.personnelNumber}
+                                      </span>
+                                    )}
                                   </div>
                                   <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100" />
                                 </div>
@@ -928,11 +935,13 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                     </span>
                     <div>
                       <span className="font-semibold text-slate-900">
-                        {employee.firstName} {employee.lastName}
+                        {formatEmployeeName(employee)}
                       </span>
-                      <span className="text-[11px] text-slate-500 ml-1 font-mono">
-                        ({employee.personnelNumber})
-                      </span>
+                      {employee.personnelNumber && (
+                        <span className="text-[11px] text-slate-500 ml-1 font-mono">
+                          ({employee.personnelNumber})
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
@@ -967,7 +976,7 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                 <div className="mt-1 space-y-1">
                   {currentSchedule.unassignedStaff.frei.map((e) => (
                     <div key={e.id} className="text-slate-700 font-medium">
-                      {e.firstName} {e.lastName}
+                      {formatEmployeeName(e)}
                     </div>
                   ))}
                   {currentSchedule.unassignedStaff.frei.length === 0 && (
@@ -985,7 +994,7 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                     .filter((e) => e.role === 'springer')
                     .map((e) => (
                       <div key={e.id} className="text-slate-700 font-medium flex items-center justify-between">
-                        <span>{e.firstName} {e.lastName}</span>
+                        <span>{formatEmployeeName(e)}</span>
                         <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 rounded font-mono">
                           {SHIFT_SHORT_NAMES[calculateEmployeeShiftForWeek(e, selectedYear, selectedKW, db.manualOverrides)]}
                         </span>
@@ -1052,7 +1061,7 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                       <tr key={emp.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-2 px-3 font-medium text-slate-900 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-slate-200">
                           <div className="flex items-center justify-between">
-                            <span>{emp.firstName} {emp.lastName}</span>
+                            <span>{formatEmployeeName(emp)}</span>
                             {emp.role === 'teamleiter' && (
                               <span className="text-[9px] bg-slate-900 text-amber-300 px-1 rounded font-bold">TL</span>
                             )}
@@ -1063,9 +1072,11 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                               <span className="text-[9px] bg-purple-100 text-purple-800 px-1 rounded font-bold">SP</span>
                             )}
                           </div>
-                          <span className="text-[10px] text-slate-400 font-mono block">
-                            {emp.personnelNumber}
-                          </span>
+                          {emp.personnelNumber && (
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              {emp.personnelNumber}
+                            </span>
+                          )}
                         </td>
 
                         <td className="py-2 px-2 text-slate-600 font-mono text-[11px] border-r border-slate-200">
@@ -1332,7 +1343,7 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="font-semibold block">
-                              {emp.firstName} {emp.lastName}
+                              {formatEmployeeName(emp)}
                             </span>
                             {emp.role === 'schichtfuehrer' && (
                               <span className="text-[9px] bg-blue-100 text-blue-800 px-1 rounded font-bold">
@@ -1346,7 +1357,7 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                             )}
                           </div>
                           <span className="text-[10px] text-slate-500 font-mono">
-                            {emp.personnelNumber} • {emp.role} • Modell: {emp.shiftModel} {emp.phone && `• Tel: ${emp.phone}`}
+                            {emp.personnelNumber ? `${emp.personnelNumber} • ` : ''}{emp.role} • Modell: {emp.shiftModel} {emp.phone && `• Tel: ${emp.phone}`}
                           </span>
                         </div>
 
@@ -1399,7 +1410,7 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                   Schicht manuell anpassen
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {editingEmployeeShift.employee.firstName} {editingEmployeeShift.employee.lastName} ({editingEmployeeShift.employee.personnelNumber}) • KW {editingEmployeeShift.kw} / {editingEmployeeShift.year}
+                  {formatEmployeeName(editingEmployeeShift.employee)} {editingEmployeeShift.employee.personnelNumber ? `(${editingEmployeeShift.employee.personnelNumber}) ` : ''}• KW {editingEmployeeShift.kw} / {editingEmployeeShift.year}
                 </p>
               </div>
               <button
