@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DepartmentDatabase, Employee, AbsenceType } from '../types';
 import {
   ABSENCE_CONFIGS,
@@ -289,6 +289,17 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
     }
   };
 
+  // Fängt mouseup auch dann ab, wenn die Maustaste außerhalb dieser
+  // Komponente losgelassen wird (z.B. Nutzer zieht bis über den Fensterrand
+  // hinaus). Ohne diesen globalen Listener bliebe ein laufender Drag sonst
+  // in einem inkonsistenten Zwischenzustand hängen (isDraggingRef weiterhin
+  // true, bis der nächste Klick ihn zurücksetzt).
+  useEffect(() => {
+    const onGlobalMouseUp = () => handleMouseUp();
+    document.addEventListener('mouseup', onGlobalMouseUp);
+    return () => document.removeEventListener('mouseup', onGlobalMouseUp);
+  }, [db, onUpdateDB]);
+
   // Quick range stamp submission
   const handleSaveRangeStamp = (e: React.FormEvent) => {
     e.preventDefault();
@@ -473,14 +484,21 @@ export const YearlyAbsenceCalendar: React.FC<YearlyAbsenceCalendarProps> = ({ db
   }, [db.employees, db.machines, displayAbsences]);
 
   return (
-    <div className="space-y-4" onMouseUp={handleMouseUp}>
+    <div className="space-y-4">
       {/* Vacation / Absence Overlap Alert Panel for Machines */}
       <VacationConflictAlertPanel
         db={db}
-        onSelectDateRange={(startDate) => {
-          const dateObj = parseISODate(startDate);
-          setSelectedYear(dateObj.getUTCFullYear());
-          setSelectedMonth(dateObj.getUTCMonth());
+        onSelectDateRange={(startDate, endDate) => {
+          const startObj = parseISODate(startDate);
+          const endObj = parseISODate(endDate);
+          setSelectedYear(startObj.getUTCFullYear());
+          setSelectedMonth(startObj.getUTCMonth());
+          // Reicht der Konflikt über einen Monatswechsel hinaus, würde die
+          // reine Monatsansicht das Enddatum abschneiden - auf Quartal
+          // wechseln, damit der komplette Konfliktzeitraum sichtbar bleibt.
+          if (startObj.getUTCFullYear() !== endObj.getUTCFullYear() || startObj.getUTCMonth() !== endObj.getUTCMonth()) {
+            setViewGranularity('quarter');
+          }
         }}
         onOpenEditAbsence={(employeeId, startDate, endDate) => {
           setRangeEmployeeId(employeeId);

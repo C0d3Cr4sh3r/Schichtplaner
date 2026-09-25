@@ -313,7 +313,7 @@ export const MachineManager: React.FC<MachineManagerProps> = ({ db, onUpdateDB }
                         ...editingMachine,
                         minStaffPerShift: {
                           ...editingMachine.minStaffPerShift,
-                          frueh: parseInt(e.target.value) || 0,
+                          frueh: Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0)),
                         },
                       })
                     }
@@ -333,7 +333,7 @@ export const MachineManager: React.FC<MachineManagerProps> = ({ db, onUpdateDB }
                         ...editingMachine,
                         minStaffPerShift: {
                           ...editingMachine.minStaffPerShift,
-                          spaet: parseInt(e.target.value) || 0,
+                          spaet: Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0)),
                         },
                       })
                     }
@@ -353,7 +353,7 @@ export const MachineManager: React.FC<MachineManagerProps> = ({ db, onUpdateDB }
                         ...editingMachine,
                         minStaffPerShift: {
                           ...editingMachine.minStaffPerShift,
-                          nacht: parseInt(e.target.value) || 0,
+                          nacht: Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0)),
                         },
                       })
                     }

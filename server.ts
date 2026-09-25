@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -8,6 +8,21 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: '20mb' }));
+
+// express.json() liefert bei kaputtem JSON oder überschrittenem Limit
+// standardmäßig eine HTML-Fehlerseite statt JSON aus. Der Client prüft aber
+// explizit den content-type und verwirft alles, was kein JSON ist (siehe
+// fetchApiJson in storage.ts) - ohne diesen Handler würde ein solcher Fehler
+// als "Server nicht erreichbar" fehlinterpretiert statt als klarer 400/413.
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON in request body' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body too large (max 20mb)' });
+  }
+  next(err);
+});
 
 // Local database directory on internal disk / container volume
 const DATA_DIR = path.join(process.cwd(), 'data');

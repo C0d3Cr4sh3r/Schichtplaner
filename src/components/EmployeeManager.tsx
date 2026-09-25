@@ -800,7 +800,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
                           onChange={(e) =>
                             setEditingEmployee({
                               ...editingEmployee,
-                              rotationOffsetWeeks: parseInt(e.target.value) || 0,
+                              rotationOffsetWeeks: Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0)),
                             })
                           }
                           className="w-16 h-8 text-xs border border-slate-300 rounded p-1 font-mono text-center bg-white"
