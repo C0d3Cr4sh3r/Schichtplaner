@@ -101,7 +101,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
       onUpdateDB({
         ...db,
         employees: db.employees.filter((e) => e.id !== id),
-        absences: db.absences.filter((a) => a.employeeId !== id),
+        absences: db.absences
+          .filter((a) => a.employeeId !== id)
+          .map((a) => (a.substituteEmployeeId === id ? { ...a, substituteEmployeeId: undefined } : a)),
         manualOverrides: db.manualOverrides
           .map((o) => ({ ...o, assignedEmployeeIds: o.assignedEmployeeIds.filter((eid) => eid !== id) }))
           .filter((o) => o.assignedEmployeeIds.length > 0),

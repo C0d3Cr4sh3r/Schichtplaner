@@ -47,9 +47,18 @@ export const MachineManager: React.FC<MachineManagerProps> = ({ db, onUpdateDB }
 
   const handleDelete = (id: string) => {
     if (confirm('Möchten Sie diese Maschine wirklich aus der Datenbank entfernen?')) {
+      // Verwaiste Referenzen auf die gelöschte Maschine mit aufräumen, sonst
+      // bleiben tote IDs in Mitarbeiter-Qualifikationen und manuellen
+      // Schicht-Überschreibungen stehen.
       onUpdateDB({
         ...db,
         machines: db.machines.filter((m) => m.id !== id),
+        employees: db.employees.map((e) => ({
+          ...e,
+          qualifiedMachineIds: e.qualifiedMachineIds.filter((mid) => mid !== id),
+          preferredMachineId: e.preferredMachineId === id ? undefined : e.preferredMachineId,
+        })),
+        manualOverrides: db.manualOverrides.filter((o) => o.machineId !== id),
       });
     }
   };

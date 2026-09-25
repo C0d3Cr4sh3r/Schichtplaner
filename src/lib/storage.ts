@@ -549,6 +549,41 @@ export function deleteDepartment(code: string): void {
   deleteDepartmentAsync(code);
 }
 
+export interface DepartmentBackup {
+  date: string; // YYYY-MM-DD
+  file: string;
+}
+
+/**
+ * Listet die verfügbaren täglichen Server-Backups einer Abteilung auf
+ * (neueste zuerst). Nur verfügbar gegen den echten Intranet-Server.
+ */
+export async function listDepartmentBackupsAsync(code: string): Promise<DepartmentBackup[]> {
+  const norm = normalizeCode(code);
+  const data = await fetchApiJson<DepartmentBackup[]>(`/api/departments/${norm}/backups`);
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Stellt ein bestimmtes tägliches Backup als aktuellen Stand der Abteilung wieder her.
+ * Der bisherige (evtl. fehlerhafte) Stand wird dabei serverseitig selbst noch
+ * einmal gesichert, bevor er überschrieben wird.
+ */
+export async function restoreDepartmentBackupAsync(
+  code: string,
+  date: string
+): Promise<{ success: boolean; error?: string }> {
+  const norm = normalizeCode(code);
+  try {
+    const res = await fetch(`/api/departments/${norm}/backups/${date}/restore`, { method: 'POST' });
+    if (res.ok) return { success: true };
+    const data = await res.json().catch(() => null);
+    return { success: false, error: data?.error || 'Wiederherstellung fehlgeschlagen.' };
+  } catch {
+    return { success: false, error: 'Server nicht erreichbar.' };
+  }
+}
+
 /**
  * Fast verify code on intranet server or local storage
  */

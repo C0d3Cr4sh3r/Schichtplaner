@@ -13,6 +13,10 @@ app.use(express.json({ limit: '20mb' }));
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DEPT_DIR = path.join(DATA_DIR, 'departments');
 const SYSTEM_FILE = path.join(DATA_DIR, 'system.json');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+// Wie viele Tage täglicher Backups pro Abteilung aufgehoben werden, bevor
+// die ältesten automatisch gelöscht werden.
+const BACKUP_RETENTION_DAYS = 30;
 
 // Ensure local intranet database storage directories exist
 if (!fs.existsSync(DATA_DIR)) {
@@ -20,6 +24,9 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 if (!fs.existsSync(DEPT_DIR)) {
   fs.mkdirSync(DEPT_DIR, { recursive: true });
+}
+if (!fs.existsSync(BACKUP_DIR)) {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
 }
 
 // System settings interface (admin password, registry)
@@ -103,6 +110,45 @@ function normalizeCode(code: string): string {
 function getDeptFilePath(code: string): string {
   const norm = normalizeCode(code);
   return path.join(DEPT_DIR, `${norm}.json`);
+}
+
+// Automatisches tägliches Backup: schreibt höchstens einmal pro Tag und
+// Abteilung eine Sicherungskopie des zuletzt gespeicherten Stands, damit ein
+// versehentlich falscher Speichervorgang (z.B. ein Frontend-Bug, der Daten
+// löscht) nicht die einzige verfügbare Kopie überschreibt. Nutzt dieselbe
+// atomare Schreibweise wie die Hauptdatei. Läuft "best effort" - ein
+// fehlgeschlagenes Backup darf den eigentlichen Speichervorgang nie
+// verhindern, deshalb wird der Aufrufer diese Funktion in try/catch kapseln.
+function writeDailyBackup(code: string, content: string): void {
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const backupPath = path.join(BACKUP_DIR, `${code}.${day}.json`);
+  if (fs.existsSync(backupPath)) return; // schon ein Backup für heute vorhanden
+  writeFileAtomic(backupPath, content);
+}
+
+// Löscht Backups, die älter als BACKUP_RETENTION_DAYS sind. Wird nach jedem
+// Backup-Schreibvorgang aufgerufen - günstig genug (ein readdirSync über ein
+// Verzeichnis mit maximal ein paar hundert Dateien), um es nicht separat zu
+// terminieren.
+function pruneOldBackups(): void {
+  const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  let files: string[];
+  try {
+    files = fs.readdirSync(BACKUP_DIR);
+  } catch {
+    return;
+  }
+  for (const file of files) {
+    const match = file.match(/\.(\d{4}-\d{2}-\d{2})\.json$/);
+    if (!match) continue;
+    const fileDate = new Date(`${match[1]}T00:00:00Z`).getTime();
+    if (isNaN(fileDate) || fileDate >= cutoff) continue;
+    try {
+      fs.unlinkSync(path.join(BACKUP_DIR, file));
+    } catch (err) {
+      console.error(`[Backup] Failed to prune old backup ${file}:`, err);
+    }
+  }
 }
 
 // Seeding standard industrial departments if completely empty
@@ -592,6 +638,21 @@ app.put('/api/departments/:code', (req: Request, res: Response) => {
       });
     }
 
+    // Backup des BISHERIGEN Stands, bevor er überschrieben wird - so bleibt
+    // bei einem fehlerhaften Speichervorgang (z.B. clientseitiger Bug) immer
+    // eine Kopie von vor dieser Änderung erhalten. Rein additiv und "best
+    // effort": ein Backup-Fehler darf den eigentlichen Speichervorgang nie
+    // verhindern.
+    if (fs.existsSync(filePath)) {
+      try {
+        const existingContent = fs.readFileSync(filePath, 'utf-8');
+        writeDailyBackup(code, existingContent);
+        pruneOldBackups();
+      } catch (err) {
+        console.error(`[Backup] Failed to back up department ${code} before save:`, err);
+      }
+    }
+
     const { baseVersion: _discard, ...rest } = body;
     const updated = {
       ...rest,
@@ -673,10 +734,78 @@ app.delete('/api/departments/:code', (req: Request, res: Response) => {
     return res.status(404).json({ error: `Department ${code} does not exist` });
   }
   try {
+    // Auch beim Löschen zuerst sichern - eine versehentlich gelöschte
+    // Abteilung soll über /api/departments/:code/backups wiederherstellbar
+    // bleiben.
+    try {
+      const existingContent = fs.readFileSync(filePath, 'utf-8');
+      writeDailyBackup(code, existingContent);
+    } catch (err) {
+      console.error(`[Backup] Failed to back up department ${code} before delete:`, err);
+    }
     fs.unlinkSync(filePath);
     res.json({ success: true, deleted: code });
   } catch (err: any) {
     res.status(500).json({ error: `Failed to delete department ${code}`, details: err.message });
+  }
+});
+
+// 7b. List available backups for a department (most recent first)
+app.get('/api/departments/:code/backups', (req: Request, res: Response) => {
+  const code = normalizeCode(req.params.code);
+  try {
+    const files = fs.readdirSync(BACKUP_DIR).filter((f) => f.startsWith(`${code}.`) && f.endsWith('.json'));
+    const backups = files
+      .map((f) => {
+        const match = f.match(/^.+\.(\d{4}-\d{2}-\d{2})\.json$/);
+        return match ? { date: match[1], file: f } : null;
+      })
+      .filter((b): b is { date: string; file: string } => b !== null)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    res.json(backups);
+  } catch (err: any) {
+    res.status(500).json({ error: `Failed to list backups for ${code}`, details: err.message });
+  }
+});
+
+// 7c. Restore a specific dated backup as the current department state.
+// Bumps the version so optimistic-locking clients pick up the restored data.
+app.post('/api/departments/:code/backups/:date/restore', (req: Request, res: Response) => {
+  const code = normalizeCode(req.params.code);
+  const date = String(req.params.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'Invalid backup date format, expected YYYY-MM-DD' });
+  }
+  const backupPath = path.join(BACKUP_DIR, `${code}.${date}.json`);
+  if (!fs.existsSync(backupPath)) {
+    return res.status(404).json({ error: `No backup found for ${code} on ${date}` });
+  }
+  try {
+    const backupContent = JSON.parse(fs.readFileSync(backupPath, 'utf-8'));
+    const filePath = getDeptFilePath(code);
+
+    let currentVersion = 0;
+    if (fs.existsSync(filePath)) {
+      try {
+        currentVersion = JSON.parse(fs.readFileSync(filePath, 'utf-8')).version || 0;
+      } catch {}
+      // Vor dem Wiederherstellen auch den aktuellen (evtl. fehlerhaften)
+      // Stand sichern, damit auch DAS rückgängig gemacht werden kann.
+      try {
+        writeDailyBackup(code, fs.readFileSync(filePath, 'utf-8'));
+      } catch {}
+    }
+
+    const restored = {
+      ...backupContent,
+      departmentCode: code,
+      version: currentVersion + 1,
+      lastModified: new Date().toISOString(),
+    };
+    writeFileAtomic(filePath, JSON.stringify(restored, null, 2));
+    res.json({ success: true, code, restoredFrom: date, version: restored.version });
+  } catch (err: any) {
+    res.status(500).json({ error: `Failed to restore backup for ${code}`, details: err.message });
   }
 });
 

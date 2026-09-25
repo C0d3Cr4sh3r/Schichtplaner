@@ -443,7 +443,8 @@ export function generateMultiWeekPlan(
   horizonWeeks: number = 4
 ): WeekPlanSchedule[] {
   const result: WeekPlanSchedule[] = [];
-  const safeWeeks = Math.max(1, Math.min(52, Math.round(horizonWeeks || 4)));
+  const requestedWeeks = typeof horizonWeeks === 'number' && !isNaN(horizonWeeks) ? horizonWeeks : 4;
+  const safeWeeks = Math.max(1, Math.min(52, Math.round(requestedWeeks)));
 
   let curYear = startYear;
   let curKW = startKW;

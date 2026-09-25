@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { DepartmentDatabase } from '../types';
-import { exportDepartmentJSON, importDepartmentJSON, createSeedDepartmentDatabase, checkServerConnection } from '../lib/storage';
-import { Download, Upload, RefreshCcw, Database, CheckCircle, AlertTriangle, FileCode, Info } from 'lucide-react';
+import {
+  exportDepartmentJSON,
+  importDepartmentJSON,
+  createSeedDepartmentDatabase,
+  checkServerConnection,
+  listDepartmentBackupsAsync,
+  restoreDepartmentBackupAsync,
+  DepartmentBackup,
+} from '../lib/storage';
+import { Download, Upload, RefreshCcw, Database, CheckCircle, AlertTriangle, FileCode, Info, History } from 'lucide-react';
 
 interface DatabaseManagerModalProps {
   db: DepartmentDatabase;
@@ -21,14 +29,36 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({
   const [importText, setImportText] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isServerOnline, setIsServerOnline] = useState<boolean | null>(null);
+  const [backups, setBackups] = useState<DepartmentBackup[]>([]);
+  const [restoringDate, setRestoringDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       checkServerConnection().then(setIsServerOnline);
+      listDepartmentBackupsAsync(db.departmentCode).then(setBackups);
     }
-  }, [isOpen]);
+  }, [isOpen, db.departmentCode]);
 
   if (!isOpen) return null;
+
+  const handleRestoreBackup = async (date: string) => {
+    if (
+      !confirm(
+        `Möchten Sie wirklich den Stand vom ${date} wiederherstellen? Der aktuelle Stand wird vorher automatisch gesichert, danach aber durch diesen Backup-Stand ersetzt.`
+      )
+    ) {
+      return;
+    }
+    setRestoringDate(date);
+    const result = await restoreDepartmentBackupAsync(db.departmentCode, date);
+    setRestoringDate(null);
+    if (result.success) {
+      setStatusMsg({ type: 'success', text: `Stand vom ${date} wurde wiederhergestellt. Bitte Seite neu laden, um ihn zu sehen.` });
+      listDepartmentBackupsAsync(db.departmentCode).then(setBackups);
+    } else {
+      setStatusMsg({ type: 'error', text: result.error || 'Wiederherstellung fehlgeschlagen.' });
+    }
+  };
 
   const handleDownload = () => {
     const jsonStr = exportDepartmentJSON(db.departmentCode);
@@ -173,6 +203,38 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({
             <span>Vollständige Abteilungs-DB als JSON exportieren</span>
           </button>
         </div>
+
+        {/* Automatic server backups */}
+        {isServerOnline && (
+          <div className="space-y-2 pt-2 border-t border-slate-200">
+            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5 text-slate-500" />
+              Automatische Server-Backups
+            </label>
+            <p className="text-[11px] text-slate-500">
+              Der Server sichert vor jeder Änderung automatisch den Stand des Vortages (max. 30 Tage aufbewahrt). Damit lässt sich ein versehentlicher Datenverlust rückgängig machen.
+            </p>
+            {backups.length === 0 ? (
+              <p className="text-[11px] text-slate-400 italic">Noch keine automatischen Backups vorhanden (entstehen ab der ersten Änderung an einem neuen Tag).</p>
+            ) : (
+              <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                {backups.map((b) => (
+                  <div key={b.date} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                    <span className="font-mono text-slate-700">{b.date}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreBackup(b.date)}
+                      disabled={restoringDate === b.date}
+                      className="text-[11px] text-blue-700 hover:text-blue-900 font-medium cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                    >
+                      {restoringDate === b.date ? 'Wird wiederhergestellt…' : 'Wiederherstellen'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Import action */}
         <div className="space-y-2 pt-2 border-t border-slate-200">
