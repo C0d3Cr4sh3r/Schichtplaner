@@ -27,7 +27,16 @@
   overflow: hidden;
 }
 
-/* Specific Print Media Styles for 1-Page DIN A4 guarantee */
+/* Specific Print Media Styles for 1-Page DIN A4 guarantee.
+   Die @page-Papierausrichtung (size: ... landscape/portrait) kann nicht per
+   CSS-Klasse bedingt umgeschaltet werden - @page-Deklarationen lassen sich
+   nicht in einen normalen Selektor verschachteln und reagieren nicht auf
+   Klassen am <body>. Der Standardwert hier ist Querformat; wählt der Nutzer
+   im Editor Hochformat, fügt LayoutEditorAndPrint.tsx vor dem Drucken
+   dynamisch ein <style>-Tag mit "size: A4 portrait" ein (siehe
+   handlePrint dort). Ohne das stand hier vorher IMMER "size: A4 landscape"
+   fest verdrahtet - ein als Hochformat konfigurierter Plan wäre beim
+   echten Ausdruck trotzdem im Querformat auf dem Papier gelandet. */
 @media print {
   @page {
     size: A4 landscape;

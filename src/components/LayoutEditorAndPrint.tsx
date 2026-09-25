@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DepartmentDatabase, PrintLayoutSettings, ShiftId } from '../types';
 import {
   generateWeekSchedule,
@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Sparkles,
   Calendar,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface LayoutEditorAndPrintProps {
@@ -32,6 +33,10 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
   const [printKW, setPrintKW] = useState<number>(currentWeekInfo.kw);
   const [printYear, setPrintYear] = useState<number>(currentWeekInfo.year);
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(true);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const innerContentRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   const settings = db.layoutSettings;
 
@@ -47,8 +52,65 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
 
   const schedule = generateWeekSchedule(db, printYear, printKW);
 
+  // Die A4-Seite schneidet überstehenden Inhalt per `overflow: hidden` still
+  // ab (siehe index.css), damit garantiert nie mehr als eine Seite gedruckt
+  // wird. Ohne diese Prüfung würde eine Abteilung mit zu vielen Maschinen/
+  // Mitarbeitern unbemerkt Zeilen verlieren - ein am schwarzen Brett
+  // ausgehängter Plan könnte dann eine Maschine oder einen Mitarbeiter
+  // komplett auslassen, ohne dass irgendwer das merkt.
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    const inner = innerContentRef.current;
+    const table = tableRef.current;
+    if (!sheet || !inner || !table) return;
+
+    const checkOverflow = () => {
+      // Die Tabelle steckt in einem "flex-1 overflow-hidden"-Container, der
+      // selbst schon abschneidet - dadurch bliebe inner.scrollHeight immer
+      // konstant, egal wie viele Zeilen die Tabelle eigentlich bräuchte.
+      // Stattdessen: Gesamthöhe des inneren Contents OHNE Tabelle (Header +
+      // Footer) plus die tatsächliche, ungeklippte Höhe der Tabelle selbst
+      // (table.scrollHeight ignoriert overflow:hidden des Elternteils).
+      const contentWithoutTable = inner.scrollHeight - table.parentElement!.clientHeight;
+      const actualContentHeight = contentWithoutTable + table.scrollHeight;
+
+      // inner ist per CSS transform skaliert; die tatsächliche gerenderte
+      // Höhe (vor Skalierung) mit dem Skalierungsfaktor multiplizieren, um
+      // sie mit der festen Blatthöhe vergleichen zu können.
+      const scale = settings.scalePercent / 100;
+      const scaledContentHeight = actualContentHeight * scale;
+      setIsOverflowing(scaledContentHeight > sheet.clientHeight + 1); // +1 Toleranz für Rundung
+    };
+
+    checkOverflow();
+    const observer = new ResizeObserver(checkOverflow);
+    observer.observe(inner);
+    observer.observe(sheet);
+    observer.observe(table);
+    return () => observer.disconnect();
+  }, [schedule, settings]);
+
   const handlePrint = () => {
+    // @page-Papiergröße lässt sich nicht per CSS-Klasse bedingt umschalten
+    // (siehe Kommentar in index.css) - deshalb hier zur Laufzeit ein
+    // <style>-Tag mit der passenden @page-Regel einfügen, je nachdem was
+    // der Nutzer im Editor gewählt hat. Ohne das würde ein als Hochformat
+    // konfigurierter Plan beim echten Ausdruck trotzdem im festverdrahteten
+    // Querformat aus index.css landen.
+    const styleTag = document.createElement('style');
+    styleTag.id = 'dynamic-print-orientation';
+    styleTag.textContent =
+      settings.orientation === 'portrait'
+        ? '@media print { @page { size: A4 portrait; } }'
+        : '@media print { @page { size: A4 landscape; } }';
+    document.head.appendChild(styleTag);
+
     window.print();
+
+    // Nach dem (synchronen) print()-Aufruf direkt wieder entfernen, damit
+    // sich mehrere Druckvorgänge mit unterschiedlicher Ausrichtung nicht
+    // gegenseitig störende <style>-Tags ansammeln.
+    document.head.removeChild(styleTag);
   };
 
   // Pre-configured template presets
@@ -413,12 +475,27 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
         </div>
       )}
 
+      {/* Overflow warning: content does not fit on one A4 page and would be silently cut off */}
+      {isOverflowing && (
+        <div className="no-print flex items-start gap-2.5 bg-red-50 border border-red-300 rounded-xl p-3 text-xs text-red-900">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold block">Inhalt passt nicht auf eine A4-Seite!</span>
+            Der aktuelle Plan ist zu groß für das gewählte Format und würde beim Drucken unten abgeschnitten werden.
+            Reduzieren Sie die A4-Skalierung, wählen Sie eine kompaktere Schriftgröße, oder blenden Sie einzelne Elemente aus (siehe Layout-Editor).
+          </div>
+        </div>
+      )}
+
       {/* Visual DIN A4 Canvas Wrapper */}
       <div className="flex justify-center p-2 sm:p-4 bg-slate-200/80 rounded-xl overflow-x-auto print-area-wrapper">
         {/* The Exact DIN A4 Page */}
         <div
+          ref={sheetRef}
           id="din-a4-printable-sheet"
-          className={`bg-white shadow-xl border border-slate-300 transition-all ${
+          className={`bg-white shadow-xl border transition-all ${
+            isOverflowing ? 'border-red-400 ring-2 ring-red-300' : 'border-slate-300'
+          } ${
             settings.orientation === 'landscape' ? 'a4-landscape-page' : 'a4-portrait-page'
           } p-5 flex flex-col justify-between`}
           style={{
@@ -430,6 +507,7 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
         >
           {/* Inner content wrapped in scale factor */}
           <div
+            ref={innerContentRef}
             className="flex-1 flex flex-col justify-between"
             style={{
               transform: `scale(${settings.scalePercent / 100})`,
@@ -480,9 +558,11 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
                         Teamleitung:
                       </span>
                       <span className="font-bold text-slate-900 block">
-                        {schedule.teamLeader
-                          ? `${schedule.teamLeader.firstName} ${schedule.teamLeader.lastName}`
-                          : 'Klaus Bauer'}
+                        {schedule.teamLeader ? (
+                          `${schedule.teamLeader.firstName} ${schedule.teamLeader.lastName}`
+                        ) : (
+                          <span className="text-slate-400 italic font-normal">Nicht besetzt</span>
+                        )}
                       </span>
                       {settings.showStaffPhone && schedule.teamLeader?.phone && (
                         <span className="font-mono text-[9px] text-slate-600">{schedule.teamLeader.phone}</span>
@@ -583,7 +663,7 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
 
             {/* 2. Main Table */}
             <div className="flex-1 overflow-hidden">
-              <table className="w-full border-collapse border border-black text-[10px]">
+              <table ref={tableRef} className="w-full border-collapse border border-black text-[10px]">
                 <thead>
                   <tr className="bg-slate-200 text-black font-bold border-b border-black">
                     <th className="py-1.5 px-2 border-r border-black w-1/4 text-left">
