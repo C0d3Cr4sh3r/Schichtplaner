@@ -535,10 +535,10 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
                       <input
                         type="password"
                         required
-                        minLength={4}
+                        minLength={6}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Neues Passwort (min. 4)"
+                        placeholder="Neues Passwort (min. 6)"
                         className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
                       />
                     </div>
@@ -547,7 +547,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
                       <input
                         type="password"
                         required
-                        minLength={4}
+                        minLength={6}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="Neues Passwort bestätigen"

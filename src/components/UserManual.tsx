@@ -29,7 +29,7 @@ import {
 export const UserManual: React.FC = () => {
   const [activeSection, setActiveSection] = useState<string>('all');
   const [rotationSimWeek, setRotationSimWeek] = useState<number>(1);
-  const [simSequence, setSimSequence] = useState<string[]>(['frueh', 'spaet', 'nacht', 'frei']);
+  const [simSequence, setSimSequence] = useState<string[]>(['frueh', 'nacht', 'spaet']);
   const [simOffset, setSimOffset] = useState<number>(0);
 
   // Simulator for visual demonstration of the rotation engine
@@ -143,9 +143,13 @@ export const UserManual: React.FC = () => {
             </h2>
             <p className="text-slate-600 text-sm leading-relaxed mb-4">
               <strong>SchichtPlan Pro</strong> ist eine spezialisierte Komplettlösung zur Planung von industriellen
-              Schichten, Maschinenbelegungen und Urlaubsabwesenheiten im produzierenden Gewerbe. Die Architektur ist
-              zu 100 % auf den <strong>sicheren Intranet-Einsatz im geschlossenen Firmennetzwerk</strong> ausgelegt. Es
-              werden zu keinem Zeitpunkt Mitarbeiter- oder Produktionsdaten an externe Cloud-Dienste übermittelt.
+              Schichten, Maschinenbelegungen und Urlaubsabwesenheiten im produzierenden Gewerbe. SchichtPlan Pro ist
+              primär für den Betrieb auf einem zentralen Server im <strong>Firmen-Intranet</strong> ausgelegt: In diesem
+              Modus werden zu keinem Zeitpunkt Mitarbeiter- oder Produktionsdaten an externe Cloud-Dienste übermittelt.
+              Ist kein solcher Server erreichbar (z. B. bei einer Demo- oder Cloud-Installation), wechselt die
+              Anwendung automatisch in einen <strong>Browser-Modus</strong> und speichert alle Daten ausschließlich
+              lokal auf dem jeweiligen Gerät. Für den produktiven Betrieb mit mehreren Nutzern ist stets der
+              Intranet-Server-Modus vorgesehen.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -323,7 +327,10 @@ export const UserManual: React.FC = () => {
             </h2>
             <p className="text-slate-600 text-sm leading-relaxed mb-4">
               Die mathematische Rotations-Engine errechnet automatisch für jede Kalenderwoche des Jahres die korrekte
-              Schicht für jeden Mitarbeiter, inklusive korrekter Behandlung von 52- bzw. 53-Wochen-ISO-Jahren.
+              Schicht für jeden Mitarbeiter, inklusive korrekter Behandlung von 52- bzw. 53-Wochen-ISO-Jahren. Der
+              werkseitige Standard-Rhythmus für neue Mitarbeiter im 3-Schicht-Betrieb lautet{' '}
+              <strong>Früh → Nacht → Spät</strong> und wird beim Anlegen eines neuen Mitarbeiters automatisch
+              vorausgewählt.
             </p>
 
             <div className="border border-slate-200 bg-slate-50 rounded-xl p-5 mb-6">
@@ -338,6 +345,7 @@ export const UserManual: React.FC = () => {
                     className="w-full text-xs p-2 border border-slate-300 rounded bg-white"
                     onChange={(e) => setSimSequence(e.target.value.split(','))}
                   >
+                    <option value="frueh,nacht,spaet">Früh ➡️ Nacht ➡️ Spät (Werkseitiger Standard, 3 Wochen)</option>
                     <option value="frueh,spaet,nacht,frei">Früh ➡️ Spät ➡️ Nacht ➡️ Frei (4 Wochen)</option>
                     <option value="frueh,spaet,frei">Früh ➡️ Spät ➡️ Frei (3 Wochen)</option>
                     <option value="frueh,frueh,spaet,frei">Früh ➡️ Früh ➡️ Spät ➡️ Frei (4 Wochen)</option>
@@ -498,6 +506,11 @@ export const UserManual: React.FC = () => {
                   🧹 Mit dem <strong>Radiergummi</strong> können eingetragene Tage einfach per Klick wieder entfernt
                   werden.
                 </div>
+                <div className="text-[11px] bg-amber-50 border border-amber-200 rounded p-2 text-amber-800 mt-2">
+                  ⚠️ Beim Öffnen des Kalenders ist <strong>standardmäßig kein Stempel aktiv</strong> — ein
+                  versehentlicher Klick auf ein Kalenderfeld trägt also nichts ein. Erst nach bewusster Auswahl
+                  eines Stempels werden Klicks auf Tage wirksam.
+                </div>
               </div>
 
               <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-3xs">
@@ -507,11 +520,42 @@ export const UserManual: React.FC = () => {
                 </h4>
                 <p className="text-xs text-slate-600 leading-relaxed mb-2">
                   Gesetzliche Feiertage (z. B. Neujahr, Karfreitag, Tag der Arbeit, Weihnachten) werden automatisch
-                  erkannt.
+                  erkannt und lassen sich über den Button „Feiertage" oberhalb des Kalenders farblich ein- oder
+                  ausblenden.
                 </p>
                 <div className="text-[11px] bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-800">
-                  Urlaubstage werden nur für tatsächliche Arbeitstage (Mo-Fr) vom Jahreskontingent abgezogen!
+                  Urlaubstage werden nur für tatsächliche Arbeitstage (Mo-Fr, ohne Feiertage) vom Jahreskontingent
+                  abgezogen!
                 </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-3xs">
+                <h4 className="font-bold text-slate-800 text-xs tracking-wide uppercase mb-2 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  Urlaubskontingent & Kontostand
+                </h4>
+                <p className="text-xs text-slate-600 leading-relaxed mb-2">
+                  Jeder Mitarbeiter hat ein individuelles Jahres-Urlaubskontingent (Standard: 30 Tage) inklusive
+                  Vorjahresübertrag und Sonderregelungen (z. B. Zusatzurlaub bei Schwerbehinderung). Klicken Sie im
+                  Kalender auf das Urlaubskonto-Badge eines Mitarbeiters, um Kontingent und Kontostand einzusehen
+                  oder anzupassen.
+                </p>
+                <div className="text-[11px] bg-red-50 border border-red-200 rounded p-2 text-red-800">
+                  Überschreitet ein Mitarbeiter sein Kontingent, warnt das System automatisch mit einer
+                  übersichtlichen Liste aller betroffenen Mitarbeiter.
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-3xs">
+                <h4 className="font-bold text-slate-800 text-xs tracking-wide uppercase mb-2 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  Automatische Konflikterkennung an Maschinen
+                </h4>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Überschneiden sich die Urlaubs- oder Abwesenheitszeiten mehrerer für dieselbe Maschine
+                  eingewiesener Mitarbeiter, warnt das System automatisch — sichtbar als Zähler-Badge im Tab
+                  „Urlaub & Krankheit" sowie als farbliche Markierung der betroffenen Kalendertage.
+                </p>
               </div>
             </div>
           </section>
@@ -548,7 +592,9 @@ export const UserManual: React.FC = () => {
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
                   <span>
-                    <strong>Unterschriftenzeilen:</strong> Automatische Felder für Meister, Planer und Betriebsrat.
+                    <strong>Unterschriftenzeilen:</strong> Zwei frei beschriftbare Felder (Standard: „Schichtleitung
+                    (geprüft)" und „Betriebsrat / Abteilungsleitung (freigegeben)"), im Layout-Editor beliebig
+                    umbenennbar — z. B. auf Meister, Planer oder andere betriebliche Funktionen.
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
@@ -600,6 +646,22 @@ export const UserManual: React.FC = () => {
                   Backup-Datei.
                 </p>
               </div>
+
+              <div className="border border-slate-200 bg-white p-4 rounded-xl shadow-3xs sm:col-span-2">
+                <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center text-amber-600 mb-2">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <h4 className="font-bold text-slate-800 text-xs tracking-wide uppercase mb-1">
+                  Automatische tägliche Server-Backups
+                </h4>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Läuft die Anwendung im Intranet-Server-Modus, sichert der Server bei jeder Änderung zusätzlich
+                  automatisch den Stand des Vortages (30 Tage aufbewahrt, danach automatisch aufgeräumt). Diese
+                  automatischen Backups finden Sie im Bereich „DB Export/DB Import" — dort lässt sich mit einem
+                  Klick auf ein bestimmtes Datum der Stand von diesem Tag wiederherstellen, ganz ohne manuellen
+                  Export/Import.
+                </p>
+              </div>
             </div>
           </section>
         )}
@@ -612,12 +674,15 @@ export const UserManual: React.FC = () => {
             </h2>
 
             <div className="space-y-4">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-950">
-                <span className="font-bold block text-sm mb-1 text-emerald-900">
-                  Vollständige DSGVO-Konformität & 100% lokale Datenhoheit
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-950">
+                <span className="font-bold block text-sm mb-1 text-blue-900">
+                  Privacy by Design als Grundlage — Prüfung durch Betriebsrat/DSB vor Produktivbetrieb nötig
                 </span>
-                SchichtPlan Pro wurde speziell für industrielle Betriebe mit hohen Datenschutz- und Betriebsratsanforderungen entwickelt.
-                Es findet keine Datenverarbeitung in externen Clouds oder durch Dritte statt.
+                SchichtPlan Pro wurde speziell für industrielle Betriebe mit hohen Datenschutz- und
+                Betriebsratsanforderungen entwickelt. Im Intranet-Server-Modus findet keine Datenverarbeitung in
+                externen Clouds oder durch Dritte statt. Details, offene Punkte (u. a. Backup, Audit-Log,
+                Löschfristen, Transportverschlüsselung) und die vollständige Datenschutzerklärung finden Sie im
+                Bereich „Datenschutzerklärung & DSGVO" (verlinkt im Footer der Anwendung).
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
@@ -638,6 +703,11 @@ export const UserManual: React.FC = () => {
                   </span>
                   <p className="text-slate-600 leading-relaxed">
                     Admin-Passwörter werden serverseitig mit dem kryptografischen Algorithmus <code>scrypt</code> inklusive individuellem Salt gehasht. Ein Brute-Force-Schutz blockiert wiederholte Fehlversuche.
+                  </p>
+                  <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 leading-relaxed">
+                    Bei der Ersteinrichtung ist ein Standard-Administratorpasswort hinterlegt, das Login-Formular
+                    zeigt es zur Erinnerung an, solange es nicht geändert wurde. Ändern Sie es umgehend über
+                    „Passwort ändern" im Admin-Bereich.
                   </p>
                 </div>
 
@@ -690,7 +760,8 @@ export const UserManual: React.FC = () => {
                   Wie erstelle ich eine neue Abteilung im System?
                 </h4>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Klicken Sie auf der Login-Seite oder in der Menüleiste auf das gelbe Schlüssel-Symbol (Admin-Bereich).
+                  Klicken Sie auf der Login-Seite auf den Button „Admin-Login / Neue Abteilung" oder in der
+                  Kopfzeile der Anwendung auf den Button „Admin" (jeweils mit Schloss-Symbol).
                   Nach Eingabe des Admin-Passworts können neue Abteilungen mit individuellem Kürzel und Namen angelegt
                   werden.
                 </p>
