@@ -84,11 +84,20 @@ Da die Abwesenheitsarten „Krank/AU“ und ggf. Vermerke zu Schwerbehindertenzu
 
 ## 5. Empfänger der Daten / Datenweitergabe an Dritte
 
-**Es findet grundsätzlich keine Datenübermittlung an Dritte statt.** Die Anwendung ist so konzipiert, dass sie vollständig ohne externe Cloud-Dienste läuft:
+**Im vorgesehenen Produktivbetrieb findet keine Datenübermittlung an Dritte statt.** Die Anwendung ist so konzipiert, dass sie vollständig ohne externe Cloud-Dienste läuft:
 
 - **Kein Tracking / Keine Telemetrie:** Keine Einbindung von Google Analytics, Facebook Pixeln oder Werbenetzwerken.
 - **Keine Cloud-Datenbank:** Alle Daten liegen lokal auf dem firmeneigenen Server im Intranet (`./data/departments/*.json`).
 - **Kein Entwickler-Zugriff:** Der Software-Hersteller (ArcanePixels) hat zu keinem Zeitpunkt Zugriff auf Ihre Unternehmens- oder Mitarbeiterdaten.
+
+**Ausnahme — aktuelle Vorführ-Demo:** Für die Prüfung vor der internen Freigabe läuft parallel eine öffentlich erreichbare Demo-Version bei **Vercel Inc. (USA)**, einem externen Hosting-Anbieter. Diese Demo:
+
+- speichert keine Daten dauerhaft (keine persistente Datenbank hinter der statisch gehosteten Version),
+- enthält ausschließlich fiktive Testdaten,
+- darf zu keinem Zeitpunkt mit echten Mitarbeiter- oder Personaldaten befüllt werden,
+- wird abgeschaltet, sobald ein internes Testsystem im Firmennetz zur Verfügung steht.
+
+Solange diese Demo läuft, ist sie ausdrücklich **nicht** die datenschutzrechtlich relevante Betriebsform — verbindlich ist ausschließlich der lokale Produktivbetrieb.
 
 ---
 
@@ -131,4 +140,16 @@ Beschäftigte haben das Recht auf:
 
 ---
 
-*Dieses Dokument entspricht dem aktuellen Stand der Software SchichtPlan Pro (Version 2026.9).*
+## 9. Bekannte Einschränkungen (Stand dieses Dokuments)
+
+Für eine vollständige rechtliche Bewertung transparent aufgeführt — diese Punkte sind noch offen und sollten vor dem Produktivbetrieb mit Betriebsrat/DSB und IT-Abteilung geklärt werden:
+
+- **Keine automatisierte Datensicherung:** Backups entstehen nur, wenn manuell über „DB Export (JSON)“ ausgelöst — es gibt kein automatisches, regelmäßiges Backup der Server-Datendateien.
+- **Kein personenbezogenes Audit-Log:** Da es keine individuelle Anmeldung pro Mitarbeiter gibt (nur das geteilte Abteilungskürzel bzw. das Admin-Passwort), lässt sich nicht lückenlos nachvollziehen, welche Einzelperson eine bestimmte Änderung vorgenommen hat.
+- **Keine automatische Löschfrist:** Abwesenheits- und Mitarbeiterdaten bleiben bestehen, bis sie manuell gelöscht werden.
+- **Datenübertragung aktuell ohne Transportverschlüsselung:** Der Server läuft standardmäßig per HTTP im lokalen Netz, nicht per HTTPS/TLS — vor Produktivbetrieb mit der IT-Abteilung abzustimmen.
+- **Zugriffstrennung auf Abteilungsebene, nicht auf Feldebene:** Jede Person mit Zugang zu einer Abteilung sieht auch den Krankheitsstatus aller Kolleg:innen dieser Abteilung.
+
+---
+
+*Dieses Dokument entspricht dem aktuellen Stand der Software SchichtPlan Pro (Version 2026.9) und wird bei wesentlichen Änderungen an der Architektur aktualisiert.*

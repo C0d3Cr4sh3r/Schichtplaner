@@ -59,12 +59,12 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
                 <span>Datenschutzerklärung & DSGVO-Konformität</span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">
-                  DSGVO / GDPR Konform
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold">
+                  Vor Einsatz zu prüfen
                 </span>
               </h2>
               <p className="text-xs text-slate-500">
-                SchichtPlan Pro • Stand: September 2026 • Dokumentation für Betriebsrat & DSB
+                SchichtPlan Pro • Stand: September 2026 • Grundlage für Betriebsrat & DSB, keine Rechtsberatung
               </p>
             </div>
           </div>
@@ -156,14 +156,14 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
         {/* Scrollable Content Body */}
         <div id="dsgvo-content-area" className="p-5 sm:p-6 overflow-y-auto space-y-6 text-slate-800 text-sm leading-relaxed">
           {/* Quick Summary Banner */}
-          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 flex items-start gap-3 text-xs text-emerald-950">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 flex items-start gap-3 text-xs text-blue-950">
+            <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-sm block text-emerald-950">
-                DSGVO-Konformitätsstatus: Vollständig erfüllt (Privacy by Design & Default)
+              <span className="font-bold text-sm block text-blue-950">
+                Privacy by Design als Grundlage — vollständige Prüfung steht noch aus
               </span>
-              <p className="mt-1 text-emerald-800">
-                SchichtPlan Pro arbeitet <strong>vollständig ohne Cloud-Tracking</strong>, ohne externe Telemetrie, ohne Werbenetzwerke und ohne Drittanbieter-Cookies. Alle Daten verbleiben auf Ihrem internen Firmenserver / lokalen Netzwerk.
+              <p className="mt-1 text-blue-900">
+                Im produktiven Betrieb (lokaler Firmenserver) arbeitet SchichtPlan Pro <strong>ohne Cloud-Tracking</strong>, ohne externe Telemetrie, ohne Werbenetzwerke und ohne Drittanbieter-Cookies. Ob der Einsatz insgesamt DSGVO-konform ist, hängt zusätzlich von Punkten ab, die dieses Dokument bewusst offen ausweist (siehe Tab 4) — u. a. Backup, Audit-Log, Löschfristen und Transportverschlüsselung. Das muss vor dem Produktivbetrieb mit Betriebsrat/DSB geklärt werden.
               </p>
             </div>
           </div>
@@ -252,10 +252,10 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
 
               <div>
                 <h3 className="text-base font-bold text-slate-900 border-b pb-2 mb-3">
-                  4. Keine Datenweitergabe & Keine Drittanbieter-Cloud
+                  4. Keine Datenweitergabe im Produktivbetrieb
                 </h3>
                 <p className="text-xs text-slate-700">
-                  SchichtPlan Pro wurde nach dem Prinzip der <strong>vollständigen Datenhoheit</strong> entwickelt:
+                  Im vorgesehenen Produktivbetrieb (lokaler Server im Firmennetz) wurde SchichtPlan Pro nach dem Prinzip der <strong>vollständigen Datenhoheit</strong> entwickelt:
                 </p>
                 <ul className="list-disc pl-5 text-xs text-slate-700 mt-2 space-y-1">
                   <li>Keine Übermittlung an externe Cloud-Anbieter oder US-Server.</li>
@@ -263,6 +263,14 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                   <li>Keine Auswertung durch künstliche Intelligenz (KI) in externen Clouds.</li>
                   <li>Der Software-Hersteller (ArcanePixels) hat <strong>keinerlei Zugriff</strong> auf die Datenbanken oder Planungsstände Ihres Betriebs.</li>
                 </ul>
+
+                <div className="mt-3 bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-950 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Ausnahme — aktuelle Vorführ-Demo:</span>
+                    Für die Prüfung vor der internen Freigabe läuft parallel eine öffentliche Demo-Version bei <strong>Vercel Inc. (USA)</strong>, einem externen Hosting-Anbieter. Diese Demo speichert keine Daten dauerhaft und enthält ausschließlich fiktive Testdaten — <strong>echte Mitarbeiter- oder Personaldaten dürfen dort unter keinen Umständen eingegeben werden.</strong> Die Demo wird abgeschaltet, sobald ein internes Testsystem im Firmennetz zur Verfügung steht.
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -400,10 +408,10 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                       </td>
                     </tr>
                     <tr>
-                      <td className="p-3 font-semibold text-slate-900">Keine Weitergabe an Cloud-Server</td>
-                      <td className="p-3 text-slate-600">100% lokaler Intranet-Betrieb im Firmennetz</td>
+                      <td className="p-3 font-semibold text-slate-900">Keine Weitergabe an Cloud-Server (Produktivbetrieb)</td>
+                      <td className="p-3 text-slate-600">100% lokaler Intranet-Betrieb im Firmennetz vorgesehen. Aktuell läuft zusätzlich eine öffentliche, datenfreie Vorführ-Demo bei Vercel (USA) — siehe Tab 1, Abschnitt 4.</td>
                       <td className="p-3 font-bold text-emerald-700 flex items-center gap-1">
-                        <Check className="w-4 h-4" /> Erfüllt
+                        <Check className="w-4 h-4" /> Erfüllt im Produktivbetrieb
                       </td>
                     </tr>
                     <tr>
@@ -427,6 +435,34 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                         <Check className="w-4 h-4" /> Erfüllt
                       </td>
                     </tr>
+                    <tr>
+                      <td className="p-3 font-semibold text-slate-900">Automatisierte Datensicherung (Backup)</td>
+                      <td className="p-3 text-slate-600">Kein automatisiertes Backup der Server-Datendateien vorhanden</td>
+                      <td className="p-3 font-bold text-amber-700 flex items-center gap-1">
+                        <AlertTriangle className="w-4 h-4" /> Offen — IT-seitig einrichten
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-semibold text-slate-900">Personenbezogenes Audit-Log</td>
+                      <td className="p-3 text-slate-600">Kein individuelles Mitarbeiter-Login, daher kein lückenloses Log einzelner Änderungen</td>
+                      <td className="p-3 font-bold text-amber-700 flex items-center gap-1">
+                        <AlertTriangle className="w-4 h-4" /> Bekannte Einschränkung
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-semibold text-slate-900">Automatische Löschfristen</td>
+                      <td className="p-3 text-slate-600">Daten bleiben bis zur manuellen Löschung bestehen</td>
+                      <td className="p-3 font-bold text-amber-700 flex items-center gap-1">
+                        <AlertTriangle className="w-4 h-4" /> Betrieblich festzulegen
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-semibold text-slate-900">Transportverschlüsselung (TLS/HTTPS)</td>
+                      <td className="p-3 text-slate-600">Server läuft aktuell per HTTP im lokalen Netz</td>
+                      <td className="p-3 font-bold text-amber-700 flex items-center gap-1">
+                        <AlertTriangle className="w-4 h-4" /> Mit IT-Abteilung abstimmen
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -436,7 +472,10 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                 <p className="text-[11px] text-blue-800">
                   1. Ändern Sie das Standard-Admin-Passwort bei der Ersteinrichtung.<br />
                   2. Binden Sie den internen Webserver über HTTPS/TLS in Ihr Firmennetz ein.<br />
-                  3. Vereinbaren Sie mit dem Betriebsrat eine standardisierte Betriebsvereinbarung zur Schicht- und Urlaubsplanung.
+                  3. Richten Sie eine regelmäßige Datensicherung des Server-Datenverzeichnisses ein.<br />
+                  4. Legen Sie mit dem Betriebsrat/DSB eine Löschfrist für Abwesenheits- und Mitarbeiterdaten fest.<br />
+                  5. Vereinbaren Sie mit dem Betriebsrat eine standardisierte Betriebsvereinbarung zur Schicht- und Urlaubsplanung.<br />
+                  6. Stellen Sie sicher, dass in der öffentlichen Vorführ-Demo (falls noch aktiv) keine echten Personaldaten eingegeben werden.
                 </p>
               </div>
             </div>
