@@ -12,6 +12,7 @@ import {
   generateMultiWeekPlan,
   getISOWeek,
   getDateRangeForKW,
+  getWeeksInISOYear,
   SHIFT_NAMES,
   SHIFT_SHORT_NAMES,
   SHIFT_COLORS,
@@ -89,15 +90,16 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
 
   const handlePrevWeek = () => {
     if (selectedKW === 1) {
-      setSelectedKW(52);
-      setSelectedYear((y) => y - 1);
+      const prevYear = selectedYear - 1;
+      setSelectedKW(getWeeksInISOYear(prevYear));
+      setSelectedYear(prevYear);
     } else {
       setSelectedKW((k) => k - 1);
     }
   };
 
   const handleNextWeek = () => {
-    if (selectedKW >= 52) {
+    if (selectedKW >= getWeeksInISOYear(selectedYear)) {
       setSelectedKW(1);
       setSelectedYear((y) => y + 1);
     } else {
@@ -1223,6 +1225,7 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                   .filter((e) => e.active)
                   .map((emp) => {
                     const isSelected = editingSlot.currentEmployeeIds.includes(emp.id);
+                    const isExcluded = emp.excludedShifts?.includes(editingSlot.shiftId);
                     return (
                       <div
                         key={emp.id}
@@ -1232,15 +1235,23 @@ export const ShiftPlannerView: React.FC<ShiftPlannerViewProps> = ({
                             : [...editingSlot.currentEmployeeIds, emp.id];
                           setEditingSlot({ ...editingSlot, currentEmployeeIds: next });
                         }}
+                        title={isExcluded ? `Achtung: ${emp.firstName} ${emp.lastName} ist für ${SHIFT_NAMES[editingSlot.shiftId]} als ausgeschlossen hinterlegt.` : undefined}
                         className={`p-2.5 rounded-md border flex items-center justify-between cursor-pointer transition-colors text-xs ${
                           isSelected
                             ? 'bg-blue-50 border-blue-400 text-blue-900'
+                            : isExcluded
+                            ? 'bg-amber-50 border-amber-300 hover:bg-amber-100 text-slate-800'
                             : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
                         }`}
                       >
                         <div>
                           <span className="font-semibold block">
                             {emp.firstName} {emp.lastName}
+                            {isExcluded && (
+                              <span className="ml-1.5 text-[10px] font-bold text-amber-700">
+                                ⚠ Schicht ausgeschlossen
+                              </span>
+                            )}
                           </span>
                           <span className="text-[10px] text-slate-500 font-mono">
                             {emp.personnelNumber} • {emp.role} • Modell: {emp.shiftModel}

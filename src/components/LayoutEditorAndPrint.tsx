@@ -3,6 +3,7 @@ import { DepartmentDatabase, PrintLayoutSettings, ShiftId } from '../types';
 import {
   generateWeekSchedule,
   getISOWeek,
+  getWeeksInISOYear,
   SHIFT_SHORT_NAMES,
   formatEmployeeName,
   formatEmployeeLastFirst,
@@ -170,7 +171,7 @@ export const LayoutEditorAndPrint: React.FC<LayoutEditorAndPrintProps> = ({ db, 
               onChange={(e) => setPrintKW(parseInt(e.target.value))}
               className="bg-white border border-slate-200 rounded px-2 py-0.5 font-mono font-bold"
             >
-              {Array.from({ length: 52 }, (_, i) => i + 1).map((w) => (
+              {Array.from({ length: getWeeksInISOYear(printYear) }, (_, i) => i + 1).map((w) => (
                 <option key={w} value={w}>
                   KW {w}
                 </option>

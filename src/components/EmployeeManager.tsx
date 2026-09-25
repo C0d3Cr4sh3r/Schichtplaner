@@ -94,9 +94,17 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ db, onUpdateDB
 
   const handleDelete = (id: string) => {
     if (confirm('Möchten Sie diesen Mitarbeiter wirklich entfernen?')) {
+      // Verwaiste Referenzen auf den gelöschten Mitarbeiter mit aufräumen,
+      // sonst bleiben tote IDs in manuellen Schicht-Überschreibungen und
+      // Abwesenheiten stehen (z.B. eine manuelle Nachtschicht-Zuweisung, die
+      // dann auf niemanden mehr zeigt).
       onUpdateDB({
         ...db,
         employees: db.employees.filter((e) => e.id !== id),
+        absences: db.absences.filter((a) => a.employeeId !== id),
+        manualOverrides: db.manualOverrides
+          .map((o) => ({ ...o, assignedEmployeeIds: o.assignedEmployeeIds.filter((eid) => eid !== id) }))
+          .filter((o) => o.assignedEmployeeIds.length > 0),
       });
     }
   };
