@@ -108,8 +108,9 @@ Da die Abwesenheitsarten „Krank/AU“ und ggf. Vermerke zu Schwerbehindertenzu
 - Zugriff auf eine Abteilung erfolgt isoliert über das jeweilige Abteilungskürzel.
 
 ### 7.2 Authentifizierung & Passworthashing
-- Das Admin-Passwort wird auf dem Server mittels **scrypt** (kryptografisches 16-Byte Salt, 64-Byte Schlüssel) gehasht gespeichert. Ein Speichern im Klartext findet nicht statt.
+- Das Admin-Passwort wird auf dem Server mittels **scrypt** (kryptografisches 16-Byte Salt, 64-Byte Schlüssel) gehasht gespeichert. Ein Speichern im Klartext findet auf dem Server nicht statt.
 - **Brute-Force-Schutz:** Nach 5 fehlgeschlagenen Anmeldeversuchen sperrt der Server Anfragen für 30 Sekunden.
+- **Fallback für die statisch gehostete Demo (Vercel, ohne eigenen Server):** Da die öffentliche Vorführversion keinen Express-Server besitzt, gibt es dort einen clientseitigen Passwort-Vergleich als Ersatz — dieser vergleicht gegen einen Wert im Browser-`localStorage`, nicht gehasht. Dieser Fallback ist im echten Betrieb wirkungslos: Sobald der Browser einmal erfolgreich mit einem echten Intranet-Server gesprochen hat, wird das dauerhaft vermerkt (auch über einen Neustart der App hinweg) und der clientseitige Vergleich danach nie wieder verwendet, selbst wenn der Server kurzzeitig nicht erreichbar ist. Auf dem produktiv betriebenen Firmenserver ist die Authentifizierung damit ausschließlich serverseitig und gehasht.
 
 ### 7.3 Datenintegrität & Atomare Speicherung
 - Schreibvorgänge auf die JSON-Datenbankdateien erfolgen **atomar** (Erstellung einer temporären Datei mit anschließendem POSIX-Rename). Ein Absturz oder Stromausfall führt nicht zu beschädigten Dateien.

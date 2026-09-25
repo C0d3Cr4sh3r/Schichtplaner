@@ -4,10 +4,33 @@ const CURRENT_DEPT_KEY = 'schichtplan_current_dept';
 const LOCAL_CACHE_PREFIX = 'schichtplan_cache_dept_';
 const LOCAL_REGISTRY_CACHE = 'schichtplan_cache_registry';
 const LOCAL_ADMIN_PASSWORD_KEY = 'schichtplan_admin_password';
+// Merkt sich dauerhaft (über Sessions hinweg), ob dieser Browser jemals
+// einen echten Intranet-Server gesprochen hat. Der lokale Passwort-Fallback
+// (siehe unten) darf NUR greifen, wenn dieses Flag nie gesetzt wurde - sonst
+// könnte jemand im Firmennetz den echten Server kurz stören und danach den
+// Fallback mit dem Standardpasswort missbrauchen. Ein einzelner
+// fehlgeschlagener Request (Timeout, Neustart) reicht dafür nicht aus,
+// weil ein Browser, der den echten Server einmal gesehen hat, ihn nie wieder
+// als "gab es nie" behandeln darf.
+const EVER_SAW_REAL_SERVER_KEY = 'schichtplan_ever_saw_real_server';
 
 export const DEFAULT_ADMIN_PASSWORD = 'Industrie2025!';
 
 let cachedServerStatus: { online: boolean; timestamp: number } | null = null;
+
+function markRealServerSeen(): void {
+  try {
+    localStorage.setItem(EVER_SAW_REAL_SERVER_KEY, '1');
+  } catch {}
+}
+
+function hasEverSeenRealServer(): boolean {
+  try {
+    return localStorage.getItem(EVER_SAW_REAL_SERVER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Hilfsfunktion für sichere API-Aufrufe. Verhindert Fehler, wenn statische Hosts
@@ -48,6 +71,7 @@ export async function checkServerConnection(force = false): Promise<boolean> {
   try {
     const data = await fetchApiJson<{ status: string; mode: string }>('/api/status');
     const isOnline = !!data && data.status === 'online' && data.mode === 'intranet-local-database';
+    if (isOnline) markRealServerSeen();
     cachedServerStatus = { online: isOnline, timestamp: now };
     return isOnline;
   } catch {
@@ -593,6 +617,7 @@ export async function verifyAdminPasswordAsync(password: string): Promise<boolea
     });
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
+      markRealServerSeen();
       const data = await res.json();
       return !!data.valid;
     }
@@ -600,7 +625,11 @@ export async function verifyAdminPasswordAsync(password: string): Promise<boolea
     console.debug('[Storage] Server admin check unavailable, verifying locally:', err);
   }
 
-  // 2. Client-side / Static host fallback (e.g. Vercel or offline)
+  // 2. Client-side / Static host fallback - NUR erlaubt, wenn dieser Browser
+  // noch nie einen echten Intranet-Server gesehen hat (siehe
+  // hasEverSeenRealServer). Auf dem echten Firmenserver bleibt diese Lücke
+  // damit dauerhaft geschlossen, auch wenn der Server mal kurz down ist.
+  if (hasEverSeenRealServer()) return false;
   try {
     const localAdminPass = localStorage.getItem(LOCAL_ADMIN_PASSWORD_KEY) || DEFAULT_ADMIN_PASSWORD;
     return trimmed === localAdminPass || trimmed === DEFAULT_ADMIN_PASSWORD;
@@ -618,11 +647,13 @@ export async function isDefaultAdminPasswordAsync(): Promise<boolean> {
     });
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
+      markRealServerSeen();
       const data = await res.json();
       return !!data.isDefault;
     }
   } catch {}
 
+  if (hasEverSeenRealServer()) return false;
   try {
     const localAdminPass = localStorage.getItem(LOCAL_ADMIN_PASSWORD_KEY);
     return !localAdminPass || localAdminPass === DEFAULT_ADMIN_PASSWORD;
@@ -641,6 +672,7 @@ export async function changeAdminPasswordAsync(
 
   const localAdminPass = localStorage.getItem(LOCAL_ADMIN_PASSWORD_KEY) || DEFAULT_ADMIN_PASSWORD;
   let serverSuccess = false;
+  let serverReachable = false;
 
   try {
     const res = await fetch('/api/admin/change-password', {
@@ -650,13 +682,26 @@ export async function changeAdminPasswordAsync(
     });
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
+      serverReachable = true;
+      markRealServerSeen();
       serverSuccess = true;
     } else if (res.status === 401 && contentType.includes('application/json')) {
+      serverReachable = true;
+      markRealServerSeen();
       const data = await res.json();
       return { success: false, error: data.error || 'Aktuelles Passwort ist nicht korrekt.' };
     }
   } catch (err) {
     console.debug('[Storage] Server unreachable for password change, saving locally.');
+  }
+
+  // Ist der echte Server erreichbar (egal ob dieser Versuch erfolgreich war),
+  // gilt ausschließlich dessen Ergebnis - kein lokaler Fallback mehr, sobald
+  // ein echter Server einmal gesehen wurde.
+  if (serverReachable || hasEverSeenRealServer()) {
+    return serverSuccess
+      ? { success: true }
+      : { success: false, error: 'Server nicht erreichbar. Bitte später erneut versuchen.' };
   }
 
   if (!serverSuccess) {
