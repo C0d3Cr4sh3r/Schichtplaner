@@ -21,7 +21,7 @@ Aktuell eine öffentlich erreichbare **Demo-Version auf Vercel** mit Testdaten (
 | Server-Laufzeit (Dev) | tsx (TypeScript direkt ausführen) | 4 |
 | Server-Bundling (Prod) | esbuild | 0.28 |
 
-Keine weiteren Laufzeit-Abhängigkeiten. Insbesondere: **keine Datenbank-Engine, kein ORM, kein Cloud-SDK, keine KI-API**. Das Projekt stammt ursprünglich aus einem Google-AI-Studio-Grundgerüst; die dort mitgelieferten, ungenutzten Reste (Gemini-API-Anbindung, `dotenv`, `motion`) wurden entfernt, da sie im Code nirgends aufgerufen wurden.
+Keine weiteren Laufzeit-Abhängigkeiten. Insbesondere: **keine Datenbank-Engine, kein ORM, kein Cloud-SDK, keine externe API-Anbindung**.
 
 ## Architektur
 

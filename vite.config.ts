@@ -12,13 +12,14 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Hot Module Reload laesst sich ueber die Umgebungsvariable DISABLE_HMR
+      // deaktivieren (z.B. waehrend automatisierter Bearbeitungen, um Flackern zu vermeiden).
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      // Ignore data/ (the server-side JSON database the backend writes on every
-      // save): without this, Vite treats every stamped absence as a source-file change
-      // and force-reloads the page, wiping the current tab/scroll state.
+      // Dateibeobachtung ebenfalls deaktivieren, wenn DISABLE_HMR gesetzt ist.
+      // Ignore data/ (die serverseitige JSON-Datenbank, die der Server bei jedem
+      // Speichern schreibt): ohne das wuerde Vite jede gestempelte Abwesenheit als
+      // Quellcode-Aenderung werten und die Seite neu laden, wodurch der aktuelle
+      // Tab-/Scroll-Zustand verloren ginge.
       watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/data/**'] },
     },
   };

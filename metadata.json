@@ -1,8 +1,5 @@
 {
   "name": "SchichtPlan Pro - Wochen- & Schichtplaner",
   "description": "Professioneller industrieller Schicht- und Wochenplaner mit Maschinenverwaltung, automatischer wöchentlicher Rotation, Abwesenheitserfassung, DIN-A4-Layout-Editor und abteilungsisoliertem Login.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "requestFramePermissions": []
 }
