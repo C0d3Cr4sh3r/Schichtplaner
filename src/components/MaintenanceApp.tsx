@@ -30,6 +30,7 @@ import {
   URGENCY_LABELS,
   Urgency,
   canModifyEntry,
+  isProvisionalOverdue,
 } from '../lib/maintenanceLogic';
 import {
   EntryInput,
@@ -67,10 +68,24 @@ function formatDateTime(iso?: string): string {
   return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-');
+  return y && m && d ? `${d}.${m}.${y}` : ymd;
+}
+
 function sortEntries(entries: MaintenanceEntry[]): MaintenanceEntry[] {
   return [...entries].sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1; // offene zuerst
     if (!a.done && !!a.provisional !== !!b.provisional) return a.provisional ? 1 : -1; // provisorisch nach den echt offenen
+    if (!a.done && a.provisional && b.provisional) {
+      const byDue = (a.provisionalDue || '9999-12-31').localeCompare(b.provisionalDue || '9999-12-31'); // früheste Frist zuerst
+      if (byDue !== 0) return byDue;
+    }
     if (!a.done) {
       const byUrgency = URGENCY_RANK[b.urgency] - URGENCY_RANK[a.urgency];
       if (byUrgency !== 0) return byUrgency;
@@ -94,7 +109,13 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
   const [tab, setTab] = useState<'liste' | 'verwaltung'>('liste');
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<'offen' | 'provisorisch' | 'erledigt' | 'alle'>('offen');
+  const [statusFilter, setStatusFilter] = useState<'offen' | 'provisorisch' | 'ueberfaellig' | 'erledigt' | 'alle'>('offen');
+  // Lokales Datum für die Überfälligkeit; wird minütlich aktualisiert, damit die Markierung auch über Mitternacht stimmt.
+  const [today, setToday] = useState(todayLocal());
+  useEffect(() => {
+    const id = setInterval(() => setToday(todayLocal()), 60000);
+    return () => clearInterval(id);
+  }, []);
   const [locationFilter, setLocationFilter] = useState('');
   const [disciplineFilter, setDisciplineFilter] = useState<'' | Discipline>('');
   const [urgencyFilter, setUrgencyFilter] = useState<'' | Urgency>('');
@@ -202,6 +223,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
       list.entries.filter((e) => {
         if (statusFilter === 'offen' && e.done) return false; // "Offen" enthält auch provisorisch behobene
         if (statusFilter === 'provisorisch' && (e.done || !e.provisional)) return false;
+        if (statusFilter === 'ueberfaellig' && !isProvisionalOverdue(e, today)) return false;
         if (statusFilter === 'erledigt' && !e.done) return false;
         if (locationFilter && e.location !== locationFilter) return false;
         if (disciplineFilter && e.discipline !== disciplineFilter) return false;
@@ -213,17 +235,18 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
         return true;
       })
     );
-  }, [list, statusFilter, locationFilter, disciplineFilter, urgencyFilter, search]);
+  }, [list, statusFilter, locationFilter, disciplineFilter, urgencyFilter, search, today]);
 
   const stats = useMemo(() => {
     const entries = list?.entries ?? [];
     return {
       open: entries.filter((e) => !e.done && !e.provisional).length,
       provisional: entries.filter((e) => !e.done && e.provisional).length,
+      overdue: entries.filter((e) => isProvisionalOverdue(e, today)).length,
       urgent: entries.filter((e) => !e.done && e.urgency === 'sofort').length,
       done: entries.filter((e) => e.done).length,
     };
-  }, [list]);
+  }, [list, today]);
 
   if (sessionInvalid) {
     return (
@@ -351,6 +374,12 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                     {stats.urgent} sofort
                   </span>
                 )}
+                {stats.overdue > 0 && (
+                  <span className="text-red-700 font-semibold inline-flex items-center gap-1" title="Frist für die Nachbearbeitung überschritten">
+                    <AlertTriangle className="w-4 h-4" />
+                    {stats.overdue} Nachbearbeitung überfällig
+                  </span>
+                )}
                 {stats.provisional > 0 && (
                   <span className="text-violet-700 font-medium" title="Läuft wieder, endgültige Reparatur steht noch aus">
                     {stats.provisional} provisorisch
@@ -384,6 +413,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Status" className={selectClass}>
                 <option value="offen">Offen (inkl. provisorisch)</option>
                 <option value="provisorisch">Nur provisorisch behoben</option>
+                <option value="ueberfaellig">Nachbearbeitung überfällig</option>
                 <option value="erledigt">Erledigt</option>
                 <option value="alle">Alle</option>
               </select>
@@ -425,7 +455,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                   const mayModify = canModifyEntry({ kuerzel: session.kuerzel, role }, entry);
                   return (
                     <li key={entry.id} className={`flex bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs ${entry.done ? 'opacity-80' : ''}`} data-entry-number={entry.number}>
-                      <div className={`w-1.5 shrink-0 ${entry.done ? 'bg-emerald-400' : entry.provisional ? 'bg-violet-500' : style.bar}`} aria-hidden />
+                      <div className={`w-1.5 shrink-0 ${entry.done ? 'bg-emerald-400' : isProvisionalOverdue(entry, today) ? 'bg-red-600' : entry.provisional ? 'bg-violet-500' : style.bar}`} aria-hidden />
                       <div className="flex-1 p-4 min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                           <span className="font-mono text-xs text-slate-500">#{entry.number}</span>
@@ -462,6 +492,12 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                             <div className="text-violet-900 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1">
                               Provisorisch behoben von <strong className="font-mono">{entry.provisionalBy}</strong> am {formatDateTime(entry.provisionalAt)}
                               {entry.provisionalNote && <span> – „{entry.provisionalNote}“</span>}
+                              {entry.provisionalDue && (
+                                <div className={isProvisionalOverdue(entry, today) ? 'text-red-700 font-semibold' : 'font-medium'}>
+                                  {isProvisionalOverdue(entry, today) ? 'ÜBERFÄLLIG – Nachbearbeiten bis ' : 'Nachbearbeiten bis '}
+                                  {formatDate(entry.provisionalDue)}
+                                </div>
+                              )}
                             </div>
                           )}
                           {entry.done && (
@@ -493,6 +529,16 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                                 <Check className="w-3.5 h-3.5" />
                                 {entry.provisional ? 'Endgültig erledigt' : 'Erledigt'}
                               </button>
+                              {entry.provisional ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setDoneTarget({ entry, mode: 'provisional' })}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-violet-300 text-violet-800 hover:bg-violet-50 text-xs font-medium cursor-pointer"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  Frist / Notiz ändern
+                                </button>
+                              ) : null}
                               {entry.provisional ? (
                                 <button
                                   type="button"
@@ -564,12 +610,12 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
           entry={doneTarget.entry}
           mode={doneTarget.mode}
           onClose={() => setDoneTarget(null)}
-          onConfirm={async (note) => {
+          onConfirm={async (note, due) => {
             const { entry, mode } = doneTarget;
             const res =
               mode === 'done'
                 ? await act(() => maintSetDoneAsync(auth, entry.id, entry.rev, true, note), `#${entry.number} als erledigt gemeldet.`)
-                : await act(() => maintSetProvisionalAsync(auth, entry.id, entry.rev, true, note), `#${entry.number} als provisorisch behoben vermerkt - bleibt in der Liste.`);
+                : await act(() => maintSetProvisionalAsync(auth, entry.id, entry.rev, true, note, due), `#${entry.number} als provisorisch behoben vermerkt - bleibt in der Liste.`);
             setDoneTarget(null);
             return res.ok;
           }}
@@ -801,12 +847,14 @@ interface DoneDialogProps {
   entry: MaintenanceEntry;
   mode: 'done' | 'provisional';
   onClose: () => void;
-  onConfirm: (note: string) => Promise<boolean>;
+  onConfirm: (note: string, due?: string) => Promise<boolean>;
 }
 
 const DoneDialog: React.FC<DoneDialogProps> = ({ entry, mode, onClose, onConfirm }) => {
   const provisional = mode === 'provisional';
-  const [note, setNote] = useState('');
+  // Beim Ändern eines bestehenden Provisoriums die bisherigen Werte vorbelegen.
+  const [note, setNote] = useState(provisional ? entry.provisionalNote ?? '' : '');
+  const [due, setDue] = useState(provisional ? entry.provisionalDue ?? '' : '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -824,7 +872,7 @@ const DoneDialog: React.FC<DoneDialogProps> = ({ entry, mode, onClose, onConfirm
           e.preventDefault();
           if (saving) return;
           setSaving(true);
-          await onConfirm(note);
+          await onConfirm(note, provisional ? due || undefined : undefined);
         }}
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4"
       >
@@ -853,6 +901,21 @@ const DoneDialog: React.FC<DoneDialogProps> = ({ entry, mode, onClose, onConfirm
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
           />
         </div>
+        {provisional && (
+          <div>
+            <label htmlFor="prov-due" className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">
+              Nachbearbeiten bis (optional, Wiedervorlage)
+            </label>
+            <input
+              id="prov-due"
+              type="date"
+              value={due}
+              onChange={(e) => setDue(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">Nach diesem Datum erscheint die Meldung als überfällig.</p>
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-50 cursor-pointer">
             Abbrechen

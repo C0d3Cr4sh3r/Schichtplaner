@@ -1257,7 +1257,7 @@ app.post('/api/maintenance/:code/entries/:id/provisional', (req: Request, res: R
     req,
     res,
     (list, actor, now) =>
-      setEntryProvisional(list, actor, String(req.params.id), req.body?.provisional, req.body?.note, req.body?.baseRev, now),
+      setEntryProvisional(list, actor, String(req.params.id), req.body?.provisional, req.body?.note, req.body?.baseRev, now, req.body?.due),
     200,
     (entry) => ({ entry })
   );

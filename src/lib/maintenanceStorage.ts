@@ -379,8 +379,8 @@ export function maintSetDoneAsync(auth: MaintAuth, id: string, baseRev: number, 
   return mutate(auth, 'POST', `${entryUrl(auth, id)}/done`, { baseRev, done, note }, (l, a, now) => setEntryDone(l, a, id, done, note, baseRev, now), (v) => v as MaintenanceEntry);
 }
 
-export function maintSetProvisionalAsync(auth: MaintAuth, id: string, baseRev: number, provisional: boolean, note: string) {
-  return mutate(auth, 'POST', `${entryUrl(auth, id)}/provisional`, { baseRev, provisional, note }, (l, a, now) => setEntryProvisional(l, a, id, provisional, note, baseRev, now), (v) => v as MaintenanceEntry);
+export function maintSetProvisionalAsync(auth: MaintAuth, id: string, baseRev: number, provisional: boolean, note: string, due?: string) {
+  return mutate(auth, 'POST', `${entryUrl(auth, id)}/provisional`, { baseRev, provisional, note, due }, (l, a, now) => setEntryProvisional(l, a, id, provisional, note, baseRev, now, due), (v) => v as MaintenanceEntry);
 }
 
 export function maintDeleteEntryAsync(auth: MaintAuth, id: string, baseRev: number) {

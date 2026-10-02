@@ -5,6 +5,8 @@ import {
   updateEntry,
   setEntryDone,
   setEntryProvisional,
+  isProvisionalOverdue,
+  isValidDateStr,
   deleteEntry,
   addUser,
   updateUser,
@@ -453,5 +455,56 @@ describe('setEntryProvisional (provisorisch behoben)', () => {
     const b = setEntryDone(a.list, user('IH1'), entry.id, true, '', entry.rev, LATER);
     expect(b.ok).toBe(false);
     if (!b.ok) expect(b.status).toBe(409);
+  });
+});
+
+describe('Wiedervorlage (Nachbearbeiten bis)', () => {
+  it('isValidDateStr prüft Format und echte Kalenderdaten', () => {
+    expect(isValidDateStr('2026-10-15')).toBe(true);
+    expect(isValidDateStr('2026-02-30')).toBe(false);
+    expect(isValidDateStr('15.10.2026')).toBe(false);
+    expect(isValidDateStr('')).toBe(false);
+    expect(isValidDateStr(20261015)).toBe(false);
+  });
+  it('Datum wird gespeichert, optional, und ungültiges Datum abgelehnt', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const withDue = setEntryProvisional(list, user('IH1'), entry.id, true, 'x', entry.rev, LATER, '2026-10-20');
+    expect(withDue.ok).toBe(true);
+    if (withDue.ok) expect(withDue.value.provisionalDue).toBe('2026-10-20');
+    const noDue = setEntryProvisional(list, user('IH1'), entry.id, true, 'x', entry.rev, LATER, '');
+    expect(noDue.ok).toBe(true);
+    if (noDue.ok) expect(noDue.value.provisionalDue).toBeUndefined();
+    const bad = setEntryProvisional(list, user('IH1'), entry.id, true, 'x', entry.rev, LATER, '2026-13-40');
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.status).toBe(400);
+  });
+  it('Frist und Notiz lassen sich bei bestehendem Provisorium ändern', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const a = setEntryProvisional(list, user('IH1'), entry.id, true, 'alt', entry.rev, LATER, '2026-10-10');
+    if (!a.ok) throw new Error('setup');
+    const b = setEntryProvisional(a.list, user('IH1'), entry.id, true, 'neu', a.value.rev, LATER, '2026-11-01');
+    expect(b.ok).toBe(true);
+    if (b.ok) {
+      expect(b.value.provisionalNote).toBe('neu');
+      expect(b.value.provisionalDue).toBe('2026-11-01');
+    }
+  });
+  it('Frist verschwindet beim Zurücknehmen und beim endgültigen Erledigen', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const a = setEntryProvisional(list, user('IH1'), entry.id, true, 'x', entry.rev, LATER, '2026-10-10');
+    if (!a.ok) throw new Error('setup');
+    const back = setEntryProvisional(a.list, user('IH1'), entry.id, false, '', a.value.rev, LATER);
+    expect(back.ok && back.value.provisionalDue).toBeFalsy();
+    const done = setEntryDone(a.list, user('IH1'), entry.id, true, '', a.value.rev, LATER);
+    expect(done.ok && done.value.provisionalDue).toBeFalsy();
+  });
+  it('isProvisionalOverdue: nur offen+provisorisch+Frist vor heute', () => {
+    const base = { done: false, provisional: true, provisionalDue: '2026-10-10' };
+    expect(isProvisionalOverdue(base, '2026-10-11')).toBe(true);
+    expect(isProvisionalOverdue(base, '2026-10-10')).toBe(false); // am Stichtag noch nicht überfällig
+    expect(isProvisionalOverdue(base, '2026-10-09')).toBe(false);
+    expect(isProvisionalOverdue({ ...base, done: true }, '2026-12-01')).toBe(false);
+    expect(isProvisionalOverdue({ ...base, provisional: false }, '2026-12-01')).toBe(false);
+    expect(isProvisionalOverdue({ ...base, provisionalDue: undefined }, '2026-12-01')).toBe(false);
   });
 });

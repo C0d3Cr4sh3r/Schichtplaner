@@ -845,7 +845,7 @@ export const UserManual: React.FC = () => {
                 </p>
                 <p>
                   Läuft die Maschine wieder, muss aber noch richtig repariert werden (z. B. Schlauch nur abgedichtet), setzt die Instandhaltung die
-                  Meldung auf <strong>„Provisorisch“</strong> und trägt ein, was gemacht wurde und was noch zu tun ist (Pflichtfeld). Die Meldung
+                  Meldung auf <strong>„Provisorisch“</strong> und trägt ein, was gemacht wurde und was noch zu tun ist (Pflichtfeld); optional setzt sie eine Wiedervorlage „Nachbearbeiten bis“. Ist das Datum überschritten, wird die Meldung rot als überfällig markiert und oben gezählt (Filter „Nachbearbeitung überfällig“); Frist und Notiz lassen sich mit „Frist / Notiz ändern“ anpassen. Die Meldung
                   bleibt in der Liste (violett markiert, Filter „Nur provisorisch behoben“), bis sie mit <strong>„Endgültig erledigt“</strong>
                   abgeschlossen wird; mit „Zurück auf offen“ lässt sich der Vermerk wieder zurücknehmen.
                 </p>

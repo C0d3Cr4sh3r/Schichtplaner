@@ -81,6 +81,19 @@ export interface MaintenanceEntry {
   provisionalBy?: string;
   provisionalAt?: string;
   provisionalNote?: string; // Pflicht: was wurde gemacht / was ist noch zu tun
+  provisionalDue?: string; // optionale Wiedervorlage "Nachbearbeiten bis" (YYYY-MM-DD)
+}
+
+/** Gültiges Kalenderdatum im Format YYYY-MM-DD? */
+export function isValidDateStr(v: unknown): v is string {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
+
+/** Ist die Nachbearbeitung eines provisorisch behobenen Eintrags überfällig? today = YYYY-MM-DD (lokales Datum des Aufrufers). */
+export function isProvisionalOverdue(entry: Pick<MaintenanceEntry, 'done' | 'provisional' | 'provisionalDue'>, today: string): boolean {
+  return !entry.done && !!entry.provisional && !!entry.provisionalDue && entry.provisionalDue < today;
 }
 
 export interface MaintenanceList {
@@ -386,7 +399,7 @@ export function setEntryDone(
   let updated: MaintenanceEntry;
   if (done) {
     // Endgültig erledigt: der Provisorium-Vermerk ist damit hinfällig.
-    const { provisional: _p1, provisionalBy: _p2, provisionalAt: _p3, provisionalNote: _p4, ...base } = entry;
+    const { provisional: _p1, provisionalBy: _p2, provisionalAt: _p3, provisionalNote: _p4, provisionalDue: _p5, ...base } = entry;
     updated = {
       ...base,
       done: true,
@@ -419,7 +432,8 @@ export function setEntryProvisional(
   provisional: unknown,
   note: unknown,
   baseRev: unknown,
-  now: string
+  now: string,
+  due?: unknown
 ): LogicResult<MaintenanceEntry> {
   const prep = prepareEntryChange(list, actor, id, baseRev);
   if ('ok' in prep) return prep;
@@ -432,18 +446,21 @@ export function setEntryProvisional(
   if (provisional) {
     const text = cleanText(note, MAX_NOTE_LEN);
     if (!text) return fail(400, 'Bitte angeben, was provisorisch gemacht wurde und was noch zu tun ist.');
+    const dueStr = due === undefined || due === null || due === '' ? undefined : due;
+    if (dueStr !== undefined && !isValidDateStr(dueStr)) return fail(400, 'Ungültiges Datum für „Nachbearbeiten bis“.');
     updated = {
       ...entry,
       provisional: true,
       provisionalBy: user.kuerzel,
       provisionalAt: now,
       provisionalNote: text,
+      provisionalDue: dueStr,
       rev: entry.rev + 1,
       updatedBy: user.kuerzel,
       updatedAt: now,
     };
   } else {
-    const { provisional: _p1, provisionalBy: _p2, provisionalAt: _p3, provisionalNote: _p4, ...rest } = entry;
+    const { provisional: _p1, provisionalBy: _p2, provisionalAt: _p3, provisionalNote: _p4, provisionalDue: _p5, ...rest } = entry;
     updated = { ...rest, rev: entry.rev + 1, updatedBy: user.kuerzel, updatedAt: now };
   }
   return {
