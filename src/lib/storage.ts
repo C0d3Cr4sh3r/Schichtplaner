@@ -18,13 +18,13 @@ export const DEFAULT_ADMIN_PASSWORD = 'Industrie2025!';
 
 let cachedServerStatus: { online: boolean; timestamp: number } | null = null;
 
-function markRealServerSeen(): void {
+export function markRealServerSeen(): void {
   try {
     localStorage.setItem(EVER_SAW_REAL_SERVER_KEY, '1');
   } catch {}
 }
 
-function hasEverSeenRealServer(): boolean {
+export function hasEverSeenRealServer(): boolean {
   try {
     return localStorage.getItem(EVER_SAW_REAL_SERVER_KEY) === '1';
   } catch {

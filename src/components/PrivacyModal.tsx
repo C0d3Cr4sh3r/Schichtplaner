@@ -64,7 +64,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-500">
-                SchichtPlan Pro • Stand: September 2026 • Grundlage für Betriebsrat & DSB, keine Rechtsberatung
+                SchichtPlan Pro • Stand: Oktober 2026 • Grundlage für Betriebsrat & DSB, keine Rechtsberatung
               </p>
             </div>
           </div>
@@ -163,7 +163,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                 Privacy by Design als Grundlage — vollständige Prüfung steht noch aus
               </span>
               <p className="mt-1 text-blue-900">
-                Im produktiven Betrieb (lokaler Firmenserver) arbeitet SchichtPlan Pro <strong>ohne Cloud-Tracking</strong>, ohne externe Telemetrie, ohne Werbenetzwerke und ohne Drittanbieter-Cookies. Ob der Einsatz insgesamt DSGVO-konform ist, hängt zusätzlich von Punkten ab, die dieses Dokument bewusst offen ausweist (siehe Tab 4) — u. a. Backup, Audit-Log, Löschfristen und Transportverschlüsselung. Das muss vor dem Produktivbetrieb mit Betriebsrat/DSB geklärt werden.
+                Im produktiven Betrieb (lokaler Firmenserver) arbeitet SchichtPlan Pro <strong>ohne Cloud-Tracking</strong>, ohne externe Telemetrie, ohne Werbenetzwerke und ohne Drittanbieter-Cookies. Ob der Einsatz insgesamt DSGVO-konform ist, hängt zusätzlich von Punkten ab, die dieses Dokument bewusst offen ausweist (siehe Tab 4) — u. a. Auslagerung der Backups, Audit-Log, Löschfristen und Transportverschlüsselung. Das muss vor dem Produktivbetrieb mit Betriebsrat/DSB geklärt werden.
               </p>
             </div>
           </div>
@@ -205,6 +205,9 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                   <li>
                     <strong>Erstellung von Schichtplänen:</strong> Druckfähige Aushänge für den Schichtbetrieb (DIN-A4).
                   </li>
+                  <li>
+                    <strong>Instandhaltungsliste:</strong> Meldung und Nachverfolgung von Störungen und Reparaturaufträgen an Maschinen (wer hat was gemeldet, wer hat es erledigt).
+                  </li>
                 </ul>
 
                 <div className="mt-3 bg-blue-50 p-3 rounded-lg border border-blue-200 text-xs text-blue-900 space-y-1">
@@ -231,6 +234,13 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                     <span className="font-bold text-slate-900 block mb-1">Urlaubsansprüche & Sonderregelungen:</span>
                     <p className="text-slate-600">
                       Jahresurlaubskontingent in Tagen (z. B. 30 Tage), Vorjahresübertrag in Tagen, Sonderregelungen/Notizen (z. B. vertragliche Teilzeitquoten oder Zusatzurlaub nach § 208 SGB IX bei Schwerbehinderung/GdB).
+                    </p>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-lg p-3">
+                    <span className="font-bold text-slate-900 block mb-1">Instandhaltungsliste (eigener Bereich):</span>
+                    <p className="text-slate-600">
+                      Pro Meldung: Standort, Bereich, Maschine, Beschreibung (Freitext), Art (mechanisch/elektrisch), Dringlichkeit, Status sowie das <strong>persönliche Kürzel</strong> der meldenden, ändernden und erledigenden Person mit Zeitstempel. Pro Kürzel gespeichert: das Kürzel selbst, ein optionaler Name und die Rolle (Melder / Instandhaltung). Ein Kürzel ist eine <strong>Kennzeichnung, keine Authentifizierung</strong> (kein Passwort) — die Zuordnung ist nicht manipulationssicher. Bitte in Freitexten keine Angaben zu Gesundheit oder Verhalten von Personen eintragen. Da Einträge einer Person zugeordnet werden können, ist vor dem Einsatz mit dem Betriebsrat zu klären, ob Mitbestimmungsrechte berührt sind (§ 87 Abs. 1 Nr. 6 BetrVG).
                     </p>
                   </div>
 
@@ -437,21 +447,21 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                     </tr>
                     <tr>
                       <td className="p-3 font-semibold text-slate-900">Automatisierte Datensicherung (Backup)</td>
-                      <td className="p-3 text-slate-600">Kein automatisiertes Backup der Server-Datendateien vorhanden</td>
+                      <td className="p-3 text-slate-600">Täglich automatische Sicherung je Abteilung und Instandhaltungsliste (30 Tage, Abteilungen im DB-Bereich wiederherstellbar). Die Sicherungen liegen auf demselben Server/Volume wie die Daten — sie schützen vor Fehlbedienung, nicht vor einem Datenträgerdefekt.</td>
                       <td className="p-3 font-bold text-amber-700 flex items-center gap-1">
-                        <AlertTriangle className="w-4 h-4" /> Offen — IT-seitig einrichten
+                        <AlertTriangle className="w-4 h-4" /> Teilweise — Auslagerung IT-seitig einrichten
                       </td>
                     </tr>
                     <tr>
                       <td className="p-3 font-semibold text-slate-900">Personenbezogenes Audit-Log</td>
-                      <td className="p-3 text-slate-600">Kein individuelles Mitarbeiter-Login, daher kein lückenloses Log einzelner Änderungen</td>
+                      <td className="p-3 text-slate-600">Schichtplan: kein individuelles Login, daher kein Log einzelner Änderungen. Instandhaltungsliste: Kürzel und Zeitstempel je Eintrag, aber ohne Passwort — nicht manipulationssicher, kein vollständiges Änderungsprotokoll.</td>
                       <td className="p-3 font-bold text-amber-700 flex items-center gap-1">
                         <AlertTriangle className="w-4 h-4" /> Bekannte Einschränkung
                       </td>
                     </tr>
                     <tr>
                       <td className="p-3 font-semibold text-slate-900">Automatische Löschfristen</td>
-                      <td className="p-3 text-slate-600">Daten bleiben bis zur manuellen Löschung bestehen</td>
+                      <td className="p-3 text-slate-600">Daten (auch Einträge der Instandhaltungsliste) bleiben bis zur manuellen Löschung bestehen</td>
                       <td className="p-3 font-bold text-amber-700 flex items-center gap-1">
                         <AlertTriangle className="w-4 h-4" /> Betrieblich festzulegen
                       </td>
@@ -474,7 +484,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                   2. Binden Sie den internen Webserver über HTTPS/TLS in Ihr Firmennetz ein.<br />
                   3. Richten Sie eine regelmäßige Datensicherung des Server-Datenverzeichnisses ein.<br />
                   4. Legen Sie mit dem Betriebsrat/DSB eine Löschfrist für Abwesenheits- und Mitarbeiterdaten fest.<br />
-                  5. Vereinbaren Sie mit dem Betriebsrat eine standardisierte Betriebsvereinbarung zur Schicht- und Urlaubsplanung.<br />
+                  5. Vereinbaren Sie mit dem Betriebsrat eine standardisierte Betriebsvereinbarung zur Schicht- und Urlaubsplanung (bei Einsatz der Instandhaltungsliste: auch deren Kürzel-Zuordnung).<br />
                   6. Stellen Sie sicher, dass in der öffentlichen Vorführ-Demo (falls noch aktiv) keine echten Personaldaten eingegeben werden.
                 </p>
               </div>

@@ -20,6 +20,8 @@ import { DatabaseManagerModal } from './components/DatabaseManagerModal';
 import { ArcanePixelsBrand } from './components/ArcanePixelsBrand';
 import { UserManual } from './components/UserManual';
 import { PrivacyModal } from './components/PrivacyModal';
+import { MaintenanceApp } from './components/MaintenanceApp';
+import { MaintSession, loadMaintSession } from './lib/maintenanceStorage';
 import { ShieldCheck } from 'lucide-react';
 
 export type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'error' } | { kind: 'conflict' };
@@ -32,6 +34,8 @@ export default function App() {
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   const [isAdminModeRequested, setIsAdminModeRequested] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: 'idle' });
+  // Angemeldete Sitzung der Instandhaltungsliste (nur für diesen Browser-Tab, siehe maintenanceStorage.ts)
+  const [maintSession, setMaintSession] = useState<MaintSession | null>(() => loadMaintSession());
   // Ref statt nur State: das Polling-Intervall (siehe unten) greift per
   // Closure darauf zu und darf currentDB nicht überschreiben, während ein
   // Save aussteht - sonst überschreibt der Poll-Zyklus eine gerade erst
@@ -133,12 +137,18 @@ export default function App() {
     setIsAdminModeRequested(false);
   };
 
+  // Instandhaltungsliste: eigener Bereich mit eigener Anmeldung (Listenkürzel + persönliches Kürzel)
+  if (maintSession) {
+    return <MaintenanceApp session={maintSession} onLogout={() => setMaintSession(null)} />;
+  }
+
   // If not logged into a department, show isolated department selector / login
   if (!currentDeptCode || !currentDB) {
     return (
       <DepartmentLogin
         onLogin={handleLogin}
         initialAdminMode={isAdminModeRequested}
+        onMaintenanceLogin={setMaintSession}
       />
     );
   }

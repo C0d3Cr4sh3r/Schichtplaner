@@ -3,9 +3,29 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
+import {
+  Actor,
+  LogicFailure,
+  LogicResult,
+  MaintenanceList,
+  addUser,
+  createEntry,
+  createList,
+  deleteEntry,
+  findActiveUser,
+  normalizeKuerzel,
+  normalizeListCode,
+  removeUser,
+  setEntryDone,
+  updateEntry,
+  updateSettings,
+  updateUser,
+} from './src/lib/maintenanceLogic';
 
 const app = express();
-const PORT = 3000;
+// PORT und DATA_DIR sind überschreibbar (Tests, mehrere Instanzen auf einem
+// Rechner); die Standardwerte entsprechen dem bisherigen Verhalten.
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '20mb' }));
 
@@ -25,7 +45,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Local database directory on internal disk / container volume
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(process.cwd(), 'data');
 const DEPT_DIR = path.join(DATA_DIR, 'departments');
 const SYSTEM_FILE = path.join(DATA_DIR, 'system.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
@@ -42,6 +62,17 @@ if (!fs.existsSync(DEPT_DIR)) {
 }
 if (!fs.existsSync(BACKUP_DIR)) {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+// Instandhaltungslisten (eigene Dateien, getrennt von den Abteilungen) und
+// deren Backups in einem Unterordner, damit sie nie mit Abteilungs-Backups
+// verwechselt werden.
+const MAINT_DIR = path.join(DATA_DIR, 'maintenance');
+const MAINT_BACKUP_DIR = path.join(BACKUP_DIR, 'maintenance');
+if (!fs.existsSync(MAINT_DIR)) {
+  fs.mkdirSync(MAINT_DIR, { recursive: true });
+}
+if (!fs.existsSync(MAINT_BACKUP_DIR)) {
+  fs.mkdirSync(MAINT_BACKUP_DIR, { recursive: true });
 }
 
 // System settings interface (admin password, registry)
@@ -134,9 +165,9 @@ function getDeptFilePath(code: string): string {
 // atomare Schreibweise wie die Hauptdatei. Läuft "best effort" - ein
 // fehlgeschlagenes Backup darf den eigentlichen Speichervorgang nie
 // verhindern, deshalb wird der Aufrufer diese Funktion in try/catch kapseln.
-function writeDailyBackup(code: string, content: string): void {
+function writeDailyBackup(code: string, content: string, dir: string = BACKUP_DIR): void {
   const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const backupPath = path.join(BACKUP_DIR, `${code}.${day}.json`);
+  const backupPath = path.join(dir, `${code}.${day}.json`);
   if (fs.existsSync(backupPath)) return; // schon ein Backup für heute vorhanden
   writeFileAtomic(backupPath, content);
 }
@@ -145,11 +176,11 @@ function writeDailyBackup(code: string, content: string): void {
 // Backup-Schreibvorgang aufgerufen - günstig genug (ein readdirSync über ein
 // Verzeichnis mit maximal ein paar hundert Dateien), um es nicht separat zu
 // terminieren.
-function pruneOldBackups(): void {
+function pruneOldBackups(dir: string = BACKUP_DIR): void {
   const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   let files: string[];
   try {
-    files = fs.readdirSync(BACKUP_DIR);
+    files = fs.readdirSync(dir);
   } catch {
     return;
   }
@@ -159,7 +190,7 @@ function pruneOldBackups(): void {
     const fileDate = new Date(`${match[1]}T00:00:00Z`).getTime();
     if (isNaN(fileDate) || fileDate >= cutoff) continue;
     try {
-      fs.unlinkSync(path.join(BACKUP_DIR, file));
+      fs.unlinkSync(path.join(dir, file));
     } catch (err) {
       console.error(`[Backup] Failed to prune old backup ${file}:`, err);
     }
@@ -899,6 +930,323 @@ app.post('/api/admin/change-password', (req: Request, res: Response) => {
   cfg.lastUpdated = new Date().toISOString();
   saveSystemConfig(cfg);
   res.json({ success: true, isDefault: false });
+});
+
+// -------------------------------------------------------------
+// INSTANDHALTUNGSLISTE
+// -------------------------------------------------------------
+// Eine Liste = eine JSON-Datei data/maintenance/<CODE>.json. Anders als bei den
+// Abteilungen wird NICHT das ganze Dokument überschrieben, sondern jede
+// Aktion (Eintrag anlegen, ändern, erledigen, ...) ist ein eigener Request, der
+// serverseitig auf den aktuellen Stand angewendet wird. Jeder Handler liest die
+// Datei, wendet die Fachlogik (src/lib/maintenanceLogic.ts) an und schreibt
+// zurück - alles synchron, ohne await dazwischen. Node arbeitet Requests
+// nacheinander ab, deshalb gehen auch bei vielen gleichzeitigen Einträgen
+// keine verloren. Änderungen am selben Eintrag erkennt die Revisionsnummer.
+//
+// Das Kürzel (Header X-Kuerzel) ist eine Kennzeichnung, keine Authentifizierung:
+// der Server prüft nur, ob es ein aktives Kürzel der Liste ist.
+
+function getMaintPath(code: string): string {
+  return path.join(MAINT_DIR, `${code}.json`);
+}
+
+function readMaintList(code: string): MaintenanceList | null {
+  const filePath = getMaintPath(code);
+  if (!code || !fs.existsSync(filePath)) return null;
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  return {
+    ...data,
+    locations: Array.isArray(data.locations) ? data.locations : [],
+    users: Array.isArray(data.users) ? data.users : [],
+    entries: Array.isArray(data.entries) ? data.entries : [],
+    version: typeof data.version === 'number' ? data.version : 1,
+    nextNumber: typeof data.nextNumber === 'number' ? data.nextNumber : 1,
+  };
+}
+
+// Sichert den bisherigen Stand (höchstens einmal pro Tag) und schreibt dann
+// atomar. Ein Backup-Fehler verhindert das Speichern nie.
+function persistMaintList(code: string, list: MaintenanceList): void {
+  const filePath = getMaintPath(code);
+  if (fs.existsSync(filePath)) {
+    try {
+      writeDailyBackup(code, fs.readFileSync(filePath, 'utf-8'), MAINT_BACKUP_DIR);
+      pruneOldBackups(MAINT_BACKUP_DIR);
+    } catch (err) {
+      console.error(`[Backup] Failed to back up maintenance list ${code}:`, err);
+    }
+  }
+  writeFileAtomic(filePath, JSON.stringify(list, null, 2));
+}
+
+function headerValue(req: Request, name: string): string {
+  const raw = req.header(name);
+  if (!raw) return '';
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+// Ermittelt den Akteur eines Requests: gültiges Admin-Passwort (Header
+// X-Admin-Password, nur für die Verwaltung im Admin-Bereich) oder Kürzel
+// (X-Kuerzel). Antwortet selbst und gibt null zurück, wenn das Admin-Passwort
+// falsch oder die Anmeldung gesperrt ist. Beide Header sind URL-kodiert, weil
+// HTTP-Header keine beliebigen Zeichen vertragen.
+function getMaintActor(req: Request, res: Response): Actor | null {
+  const adminPassword = headerValue(req, 'x-admin-password');
+  if (adminPassword) {
+    const ip = req.ip || 'unknown';
+    const rateLimit = checkRateLimit(ip);
+    if (rateLimit.locked) {
+      res.status(429).json({ error: `Zu viele Fehlversuche. Bitte in ${rateLimit.retryAfterSeconds}s erneut versuchen.` });
+      return null;
+    }
+    const cfg = getSystemConfig();
+    if (!cfg.adminPasswordHash || !verifyPasswordHash(adminPassword, cfg.adminPasswordHash)) {
+      recordFailedAttempt(ip);
+      res.status(401).json({ error: 'Administrator-Passwort ist nicht korrekt.' });
+      return null;
+    }
+    recordSuccessfulAttempt(ip);
+    return { type: 'admin' };
+  }
+  return { type: 'user', kuerzel: normalizeKuerzel(headerValue(req, 'x-kuerzel')) };
+}
+
+function sendMaintFailure(res: Response, failure: LogicFailure, list?: MaintenanceList): void {
+  const body: Record<string, unknown> = { error: failure.error };
+  if (failure.currentEntry !== undefined) body.currentEntry = failure.currentEntry;
+  // Bei Konflikt / gelöschtem Eintrag den aktuellen Stand gleich mitliefern,
+  // damit der Client sofort aktualisieren kann.
+  if (list && (failure.status === 409 || failure.status === 404)) body.list = list;
+  res.status(failure.status).json(body);
+}
+
+// Gemeinsamer Ablauf aller Änderungen: Akteur -> Liste lesen -> Logik ->
+// speichern -> neuen Stand zurückgeben. KEIN await in dieser Funktion.
+function runMaintMutation<T>(
+  req: Request,
+  res: Response,
+  fn: (list: MaintenanceList, actor: Actor, now: string) => LogicResult<T>,
+  status = 200,
+  extra?: (value: T) => Record<string, unknown>
+): void {
+  const code = normalizeListCode(req.params.code);
+  try {
+    const actor = getMaintActor(req, res);
+    if (!actor) return;
+    const list = readMaintList(code);
+    if (!list) {
+      res.status(404).json({ error: `Liste ${code} nicht gefunden.` });
+      return;
+    }
+    const result = fn(list, actor, new Date().toISOString());
+    if (!result.ok) {
+      sendMaintFailure(res, result, list);
+      return;
+    }
+    persistMaintList(code, result.list);
+    res.status(status).json({ list: result.list, ...(extra ? extra(result.value) : {}) });
+  } catch (err: any) {
+    console.error(`[Maintenance] Mutation on ${code} failed:`, err);
+    res.status(500).json({ error: 'Speichern fehlgeschlagen.', details: err.message });
+  }
+}
+
+// Admin: alle Listen (Übersicht für den Admin-Bereich)
+app.get('/api/maintenance', (req: Request, res: Response) => {
+  const actor = getMaintActor(req, res);
+  if (!actor) return;
+  if (actor.type !== 'admin') {
+    return res.status(403).json({ error: 'Nur mit Administrator-Passwort.' });
+  }
+  try {
+    const files = fs.readdirSync(MAINT_DIR).filter((f) => f.endsWith('.json'));
+    const lists = files.map((file) => {
+      const code = file.replace(/\.json$/, '');
+      try {
+        const l = readMaintList(code);
+        if (!l) throw new Error('missing');
+        return {
+          code,
+          name: l.listName,
+          userCount: l.users.length,
+          entryCount: l.entries.length,
+          openCount: l.entries.filter((e) => !e.done).length,
+        };
+      } catch {
+        return { code, name: `Liste ${code} (nicht lesbar)`, userCount: 0, entryCount: 0, openCount: 0 };
+      }
+    });
+    res.json(lists);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to list maintenance lists', details: err.message });
+  }
+});
+
+// Admin: neue Liste anlegen
+app.post('/api/maintenance', (req: Request, res: Response) => {
+  const actor = getMaintActor(req, res);
+  if (!actor) return;
+  if (actor.type !== 'admin') {
+    return res.status(403).json({ error: 'Nur mit Administrator-Passwort.' });
+  }
+  const created = createList(
+    {
+      code: req.body?.code,
+      name: req.body?.name,
+      locations: Array.isArray(req.body?.locations) ? req.body.locations : undefined,
+      firstUser: req.body?.firstUser,
+    },
+    new Date().toISOString()
+  );
+  if (!created.ok) {
+    return res.status(created.status).json({ error: created.error });
+  }
+  try {
+    // 'wx': schlägt fehl, falls die Datei inzwischen existiert (siehe Abteilungen).
+    fs.writeFileSync(getMaintPath(created.list.listCode), JSON.stringify(created.list, null, 2), {
+      encoding: 'utf-8',
+      flag: 'wx',
+    });
+    res.status(201).json({ list: created.list });
+  } catch (err: any) {
+    if (err.code === 'EEXIST') {
+      return res.status(409).json({ error: `Liste ${created.list.listCode} existiert bereits.` });
+    }
+    res.status(500).json({ error: 'Failed to create list', details: err.message });
+  }
+});
+
+// Admin: Liste löschen (vorher gesichert)
+app.delete('/api/maintenance/:code', (req: Request, res: Response) => {
+  const actor = getMaintActor(req, res);
+  if (!actor) return;
+  if (actor.type !== 'admin') {
+    return res.status(403).json({ error: 'Nur mit Administrator-Passwort.' });
+  }
+  const code = normalizeListCode(req.params.code);
+  const filePath = getMaintPath(code);
+  if (!code || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: `Liste ${code} nicht gefunden.` });
+  }
+  try {
+    try {
+      writeDailyBackup(code, fs.readFileSync(filePath, 'utf-8'), MAINT_BACKUP_DIR);
+    } catch (err) {
+      console.error(`[Backup] Failed to back up maintenance list ${code} before delete:`, err);
+    }
+    fs.unlinkSync(filePath);
+    res.json({ success: true, deleted: code });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete list', details: err.message });
+  }
+});
+
+// Anmeldung an einer Liste mit Listenkürzel + persönlichem Kürzel
+app.post('/api/maintenance/:code/login', (req: Request, res: Response) => {
+  const code = normalizeListCode(req.params.code);
+  const ip = `maint:${req.ip || 'unknown'}`;
+  const rateLimit = checkRateLimit(ip);
+  if (rateLimit.locked) {
+    return res.status(429).json({ error: `Zu viele Fehlversuche. Bitte in ${rateLimit.retryAfterSeconds}s erneut versuchen.` });
+  }
+  try {
+    const list = readMaintList(code);
+    const user = list ? findActiveUser(list, req.body?.kuerzel) : null;
+    // Bewusst dieselbe Antwort für "Liste unbekannt" und "Kürzel unbekannt".
+    if (!list || !user) {
+      recordFailedAttempt(ip);
+      return res.json({ valid: false });
+    }
+    recordSuccessfulAttempt(ip);
+    res.json({
+      valid: true,
+      listCode: list.listCode,
+      listName: list.listName,
+      user: { kuerzel: user.kuerzel, name: user.name, role: user.role },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Login fehlgeschlagen.', details: err.message });
+  }
+});
+
+// Liste lesen. ?version=N: unveränderter Stand wird nur kurz bestätigt (spart
+// beim 4-Sekunden-Polling die komplette Liste).
+app.get('/api/maintenance/:code', (req: Request, res: Response) => {
+  const code = normalizeListCode(req.params.code);
+  const actor = getMaintActor(req, res);
+  if (!actor) return;
+  try {
+    const list = readMaintList(code);
+    if (!list) return res.status(404).json({ error: `Liste ${code} nicht gefunden.` });
+    if (actor.type === 'user' && !findActiveUser(list, actor.kuerzel)) {
+      return res.status(401).json({ error: 'Kürzel unbekannt oder deaktiviert. Bitte neu anmelden.' });
+    }
+    res.set('Cache-Control', 'no-store'); // Poll-Antworten nie aus dem Browser-Cache bedienen
+    if (String(req.query.version ?? '') === String(list.version)) {
+      return res.json({ unchanged: true, version: list.version });
+    }
+    res.json({ list });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Liste konnte nicht gelesen werden.', details: err.message });
+  }
+});
+
+app.post('/api/maintenance/:code/entries', (req: Request, res: Response) => {
+  runMaintMutation(
+    req,
+    res,
+    (list, actor, now) => createEntry(list, actor, req.body, now, () => crypto.randomUUID()),
+    201,
+    (entry) => ({ entry })
+  );
+});
+
+app.patch('/api/maintenance/:code/entries/:id', (req: Request, res: Response) => {
+  runMaintMutation(
+    req,
+    res,
+    (list, actor, now) => updateEntry(list, actor, String(req.params.id), req.body, req.body?.baseRev, now),
+    200,
+    (entry) => ({ entry })
+  );
+});
+
+app.post('/api/maintenance/:code/entries/:id/done', (req: Request, res: Response) => {
+  runMaintMutation(
+    req,
+    res,
+    (list, actor, now) =>
+      setEntryDone(list, actor, String(req.params.id), req.body?.done, req.body?.note, req.body?.baseRev, now),
+    200,
+    (entry) => ({ entry })
+  );
+});
+
+app.delete('/api/maintenance/:code/entries/:id', (req: Request, res: Response) => {
+  runMaintMutation(req, res, (list, actor, now) =>
+    deleteEntry(list, actor, String(req.params.id), Number(req.query.baseRev), now)
+  );
+});
+
+app.post('/api/maintenance/:code/users', (req: Request, res: Response) => {
+  runMaintMutation(req, res, (list, actor, now) => addUser(list, actor, req.body, now), 201);
+});
+
+app.patch('/api/maintenance/:code/users/:kuerzel', (req: Request, res: Response) => {
+  runMaintMutation(req, res, (list, actor, now) => updateUser(list, actor, String(req.params.kuerzel), req.body, now));
+});
+
+app.delete('/api/maintenance/:code/users/:kuerzel', (req: Request, res: Response) => {
+  runMaintMutation(req, res, (list, actor, now) => removeUser(list, actor, String(req.params.kuerzel), now));
+});
+
+app.patch('/api/maintenance/:code/settings', (req: Request, res: Response) => {
+  runMaintMutation(req, res, (list, actor, now) => updateSettings(list, actor, req.body, now));
 });
 
 // -------------------------------------------------------------

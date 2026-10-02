@@ -1,6 +1,6 @@
 # SchichtPlan Pro
 
-Industrieller Schicht- und Wochenplaner mit Maschinenverwaltung, automatischer wöchentlicher Rotation, Abwesenheitserfassung, DIN-A4-Layout-Editor und abteilungsisoliertem Login.
+Industrieller Schicht- und Wochenplaner mit Maschinenverwaltung, automatischer wöchentlicher Rotation, Abwesenheitserfassung, DIN-A4-Layout-Editor und abteilungsisoliertem Login. Dazu eine **Instandhaltungsliste** (Störungsmeldungen mit Standort, Maschine, Dringlichkeit und Erledigt-Status) mit eigener Kürzel-Anmeldung.
 
 Diese README beschreibt den technischen Aufbau: eingesetzte Frameworks, Architektur, Datenhaltung und Betrieb. Für die rechtliche Einordnung (Datenschutz) siehe [DATENSCHUTZ.md](./DATENSCHUTZ.md).
 
@@ -45,16 +45,45 @@ Lokales Dateisystem (data/)
 - `data/system.json` — Admin-Passwort (gehasht, siehe unten) und Systemstand.
 - Alle Schreibvorgänge laufen atomar (temp-Datei + rename), damit ein Absturz mitten im Schreiben nie eine leere/kaputte Datei hinterlässt.
 - Jede Abteilung hat eine Versionsnummer (`version`). Speichert ein Client mit einer veralteten Version (weil zwischenzeitlich jemand anderes gespeichert hat), lehnt der Server das ab (HTTP 409) und liefert den aktuellen Stand zurück — verhindert, dass gleichzeitige Bearbeitung durch zwei Nutzer die Änderung des jeweils anderen stillschweigend überschreibt.
+- Die Instandhaltungsliste liegt getrennt davon in `data/maintenance/<LISTENKÜRZEL>.json` (siehe Abschnitt [Instandhaltungsliste](#instandhaltungsliste)).
 - Der Browser hält zusätzlich einen lokalen Cache (`localStorage`) für den zuletzt geladenen Abteilungsstand, ausschließlich als Lese-Fallback, falls der Server kurzzeitig nicht erreichbar ist. Geschrieben wird ausschließlich über den Server.
 
 ### Live-Synchronisation
 
 Mehrere Nutzer können gleichzeitig dieselbe Abteilung geöffnet haben. Der Browser fragt alle 4 Sekunden den aktuellen Stand vom Server ab (Polling) und aktualisiert die Ansicht, wenn sich etwas geändert hat. Ein eigener, gerade laufender Speichervorgang wird dabei nicht überschrieben.
 
+### Instandhaltungsliste
+
+Eigener Bereich neben dem Schichtplan, erreichbar über den Umschalter auf der Startseite („Schichtplan“ / „Instandhaltungsliste“).
+
+- **Anmeldung:** Listenkürzel (z. B. `INSTANDHALTUNG`) plus **persönliches Kürzel** (z. B. Initialen). Das Kürzel der Anmeldung wird automatisch als Ersteller/Bearbeiter/Erledigt-von an jeden Eintrag geschrieben. Die Sitzung gilt nur für den Browser-Tab (`sessionStorage`), damit an gemeinsam genutzten PCs nicht unter fremdem Kürzel weitergearbeitet wird.
+- **Rollen:** *Melder* (Meldungen anlegen, eigene offene Meldungen ändern/löschen) und *Instandhaltung* (zusätzlich als erledigt melden/wieder öffnen, alle Meldungen ändern/löschen, Kürzel und Standorte verwalten). Der Server erzwingt diese Rollen.
+- **Felder je Meldung:** Standort, Bereich, Maschine (Freitext mit Vorschlägen aus bisherigen Einträgen), Beschreibung, Art (mechanisch/elektrisch), Dringlichkeit (niedrig/normal/hoch/sofort), laufende Nummer, Erledigt-Status mit optionaler Notiz. Die Standorte sind je Liste konfigurierbar.
+- **Verwaltung im Admin-Bereich:** Listen anlegen/löschen und Kürzel/Standorte verwalten setzt das Admin-Passwort voraus (vom Server geprüft). Es wird bewusst keine Standardliste automatisch angelegt.
+- **Ein Kürzel ist eine Kennzeichnung, keine Authentifizierung:** es gibt kein Passwort/keine PIN. Der Server prüft nur, ob das Kürzel zur Liste gehört und aktiv ist. Wer ein Kürzel kennt, kann sich damit anmelden.
+- **Gleichzeitiges Arbeiten:** Anders als beim Schichtplan wird nicht das ganze Dokument überschrieben, sondern jede Aktion (anlegen, ändern, erledigen, löschen) einzeln auf dem Server angewendet — als eine synchrone Folge „lesen → Regeln anwenden → atomar schreiben“ ohne `await` dazwischen. Gleichzeitig angelegte Meldungen gehen deshalb nicht verloren und erhalten eindeutige Nummern. Jeder Eintrag hat eine Revisionsnummer (`rev`): ändern zwei Personen denselben Eintrag gleichzeitig, wird die zweite Änderung mit HTTP 409 abgelehnt und die Oberfläche zeigt den aktuellen Stand. Die Ansicht aktualisiert sich alle 4 Sekunden (der Server antwortet bei unverändertem Stand nur kurz).
+- **Fehler werden nie verschluckt:** Schlägt eine Aktion fehl (Server weg, Konflikt, fehlende Berechtigung), erscheint eine Meldung — es gibt keinen stillen lokalen Fallback. Nur im statisch gehosteten Demo-Modus (siehe unten) läuft die Liste lokal im Browser und ist als „Demo (nur dieser Browser)“ gekennzeichnet.
+- **Backup:** Vor der ersten Änderung des Tages wird der bisherige Stand nach `data/backups/maintenance/<KÜRZEL>.<JJJJ-MM-TT>.json` kopiert (30 Tage Aufbewahrung, ebenfalls vor dem Löschen einer Liste). Wiederherstellen: Server stoppen, Sicherungsdatei nach `data/maintenance/<KÜRZEL>.json` kopieren, Server starten. Eine Wiederherstellung in der Oberfläche gibt es für Listen noch nicht.
+- **Fachlogik** (Rechte, Validierung, Konflikte) liegt in `src/lib/maintenanceLogic.ts` — ohne Abhängigkeiten, vom Server und vom Demo-Modus gemeinsam genutzt und per Unit-Tests abgedeckt.
+
+API (JSON; Header `X-Kuerzel` bzw. `X-Admin-Password`, jeweils URL-kodiert):
+
+| Methode & Pfad | Zweck | Berechtigung |
+|---|---|---|
+| `POST /api/maintenance/:code/login` | Anmeldung prüfen | – |
+| `GET /api/maintenance/:code[?version=N]` | Liste lesen (bei gleicher Version nur `{unchanged:true}`) | aktives Kürzel |
+| `POST /api/maintenance/:code/entries` | Meldung anlegen | aktives Kürzel |
+| `PATCH /api/maintenance/:code/entries/:id` | Meldung ändern (`baseRev` nötig) | Ersteller (offen) / Instandhaltung |
+| `POST /api/maintenance/:code/entries/:id/done` | erledigt / wieder öffnen (`baseRev`, `done`, `note`) | Instandhaltung |
+| `DELETE /api/maintenance/:code/entries/:id?baseRev=N` | Meldung löschen | Ersteller (offen) / Instandhaltung |
+| `POST/PATCH/DELETE /api/maintenance/:code/users[/:kuerzel]` | Kürzel verwalten | Instandhaltung / Admin |
+| `PATCH /api/maintenance/:code/settings` | Standorte, Listenname | Instandhaltung / Admin |
+| `GET/POST /api/maintenance`, `DELETE /api/maintenance/:code` | Listen übersehen/anlegen/löschen | Admin-Passwort |
+
 ### Authentifizierung
 
 - **Mitarbeiter-Zugang:** Eintritt über ein Abteilungskürzel (z.B. `FERT-A`), keine individuellen Benutzerkonten oder Passwörter pro Mitarbeiter.
-- **Admin-Zugang:** Ein einzelnes, geteiltes Admin-Passwort für Verwaltungsfunktionen (neue Abteilungen anlegen, löschen). Das Passwort wird serverseitig mit `scrypt` gehasht gespeichert (Node.js-Bordmittel, keine externe Abhängigkeit), nie im Klartext. Nach 5 Fehlversuchen sperrt der Server Anmeldeversuche von derselben Adresse für 30 Sekunden.
+- **Admin-Zugang:** Ein einzelnes, geteiltes Admin-Passwort für Verwaltungsfunktionen (neue Abteilungen anlegen, löschen, Instandhaltungslisten verwalten). *Einschränkung:* Bei Abteilungen schützt das Passwort das Anlegen/Löschen bisher nur in der Oberfläche; der Server prüft es dort nicht zusätzlich (bei Instandhaltungslisten schon). Das Passwort wird serverseitig mit `scrypt` gehasht gespeichert (Node.js-Bordmittel, keine externe Abhängigkeit), nie im Klartext. Nach 5 Fehlversuchen sperrt der Server Anmeldeversuche von derselben Adresse für 30 Sekunden.
 
 ## Projektstruktur
 
@@ -64,6 +93,8 @@ src/
   App.tsx                  Haupt-Komponente, lädt/speichert die aktuelle Abteilung
   types.ts                 Zentrale TypeScript-Datentypen
   lib/
+    maintenanceLogic.ts      Instandhaltungsliste: Regeln, Rechte, Validierung (ohne Abhängigkeiten, getestet)
+    maintenanceStorage.ts    Instandhaltungsliste: Server-Zugriff (+ Demo-Modus im Browser)
     storage.ts              Client-seitige API-Aufrufe gegen den Server
     rotationEngine.ts        Berechnet die wöchentliche Schichtrotation
     absenceUtils.ts          Abwesenheits-Logik, Konfliktprüfung
@@ -78,7 +109,10 @@ data/                       Laufzeit-Datenbank (JSON-Dateien, nicht Teil des Rep
 npm install
 npm run dev        # startet Server + Vite-Dev-Server auf Port 3000
 npm run lint        # TypeScript-Check ohne Build (tsc --noEmit)
+npm test            # Unit-Tests (vitest)
 ```
+
+Umgebungsvariablen (optional): `PORT` (Standard 3000) und `DATA_DIR` (Standard `./data`) — z. B. um zum Testen eine zweite Instanz mit eigenem Datenordner zu starten, ohne die echten Daten anzufassen.
 
 ## Produktivbetrieb (geplant)
 

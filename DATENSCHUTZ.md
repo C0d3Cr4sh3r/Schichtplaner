@@ -1,6 +1,6 @@
 # Datenschutzerklärung & Technische und Organisatorische Maßnahmen (TOM)
 
-**SchichtPlan Pro** — Stand: 23. September 2026
+**SchichtPlan Pro** — Stand: 2. Oktober 2026
 
 > **Hinweis:** Dieses Dokument beschreibt wahrheitsgemäß, wie die Software technisch funktioniert und welche Daten sie verarbeitet. Es dient als Vorlage und Dokumentation für die Datenschutzbeauftragte / den Datenschutzbeauftragten (DSB) und den Betriebsrat. Vor dem produktiven Einsatz mit echten Mitarbeiterdaten sollte dieses Dokument um betriebsspezifische Angaben (konkreter Verantwortlicher, Kontaktdaten des DSB, Aufbewahrungsfristen) ergänzt werden.
 
@@ -23,6 +23,7 @@ SchichtPlan Pro dient der betriebsinternen Personal-, Schicht- und Kapazitätspl
 - Erfassung und Verwaltung von Urlaubsansprüchen (Jahreskontingent, Vorjahresübertrag, Sonderregelungen wie z. B. Zusatzurlaub bei Grad der Behinderung / GdB oder vertragliche Teilzeitquoten)
 - Erfassung von Abwesenheiten (Erholungsurlaub, Arbeitsunfähigkeit / AU, Karenztage, Zeitausgleich, Weiterbildung, Sonderurlaub) zur Sicherstellung der Mindestbesetzung
 - Erstellung druckfähiger Wochenschichtpläne (DIN-A4) für den Aushang im Betrieb
+- Instandhaltungsliste: Meldung und Nachverfolgung von Störungen und Reparaturaufträgen an Maschinen (wer hat was gemeldet, wer hat es erledigt)
 
 ### Rechtsgrundlagen:
 - **Art. 6 Abs. 1 lit. b DSGVO i.V.m. § 26 Abs. 1 BDSG:** Erforderlichkeit für die Durchführung und Abwicklung des Beschäftigungsverhältnisses.
@@ -66,8 +67,16 @@ Die Software speichert pro Abteilung ausschließlich zweckgebundene Daten:
 ### Maschinendaten (keine personenbezogenen Daten)
 Maschinenbezeichnung, Standort/Halle, Schichtmodell, Mindestbesetzung, Status.
 
+### Instandhaltungsliste (eigener Bereich, getrennt von den Abteilungen)
+- Pro Meldung: Standort, Bereich, Maschine, Beschreibung (Freitext), Art (mechanisch/elektrisch), Dringlichkeit, Status (offen/erledigt), optionale Erledigt-Notiz
+- Das **persönliche Kürzel** der Person, die eine Meldung angelegt, geändert oder als erledigt gemeldet hat, jeweils mit Zeitstempel
+- Pro Kürzel: das Kürzel selbst, ein optionaler Name und die Rolle (Melder / Instandhaltung)
+- Ein Kürzel ist eine **Kennzeichnung, keine Authentifizierung** (es gibt kein Passwort/keine PIN). Wer ein gültiges Kürzel kennt, kann sich damit anmelden; die Zuordnung von Einträgen zu Personen ist deshalb nicht manipulationssicher.
+- In Freitextfeldern (Beschreibung, Erledigt-Notiz) sollen keine Angaben zu Gesundheit oder Verhalten von Personen stehen; die Software prüft das nicht.
+- Da Einträge einer Person zugeordnet werden können („erledigt von“), ist vor dem Einsatz mit dem Betriebsrat zu klären, ob Mitbestimmungsrechte berührt sind (§ 87 Abs. 1 Nr. 6 BetrVG).
+
 ### Zugangsdaten
-- Das für den Mitarbeiterzugang genutzte Abteilungskürzel ist kein personenbezogenes Datum (kein individuelles Benutzerkonto pro Person).
+- Das für den Mitarbeiterzugang zum Schichtplan genutzte Abteilungskürzel ist kein personenbezogenes Datum (kein individuelles Benutzerkonto pro Person). Die persönlichen Kürzel der Instandhaltungsliste dagegen sind einer Person zuordenbar (siehe oben).
 - Für den Admin-Bereich wird ein kryptografisch gehashtes Passwort verwendet (siehe Abschnitt 6).
 
 ---
@@ -106,6 +115,7 @@ Solange diese Demo läuft, ist sie ausdrücklich **nicht** die datenschutzrechtl
 - Daten bleiben gespeichert, bis sie manuell durch berechtigte Personen (Schichtleitung / Admin) geändert oder gelöscht werden.
 - **Mitarbeiterlöschung:** Scheidet ein Mitarbeiter aus, kann er mitsamt aller verknüpften Abwesenheiten über die Mitarbeiterverwaltung unwiderruflich gelöscht werden.
 - **Abteilungsauflösung:** Ganze Abteilungen können im Admin-Bereich gelöscht werden.
+- **Instandhaltungsliste:** Einzelne Meldungen kann die Instandhaltung löschen (Melder nur ihre eigenen, noch offenen). Ganze Listen löscht der Admin. Wird ein Kürzel gelöscht, behalten bereits angelegte Einträge das Kürzel als Text; es gibt keine automatische Löschfrist für erledigte Einträge.
 - **Archivierung:** Mitarbeiter können auf „Inaktiv“ gesetzt werden, um sie aus der aktiven Schichtplanung herauszunehmen, ohne bestehende historische Daten zu vernichten.
 
 ---
@@ -125,8 +135,14 @@ Solange diese Demo läuft, ist sie ausdrücklich **nicht** die datenschutzrechtl
 - Schreibvorgänge auf die JSON-Datenbankdateien erfolgen **atomar** (Erstellung einer temporären Datei mit anschließendem POSIX-Rename). Ein Absturz oder Stromausfall führt nicht zu beschädigten Dateien.
 - Optimistisches Locking über Versionsnummern verhindert unbemerktes Überschreiben bei parallelem Arbeiten im Intranet.
 
-### 7.4 Datensicherheit & Export
+### 7.4 Datensicherheit, Backup & Export
 - Über die Funktion **„DB Export (JSON)“** können jederzeit vollständige Backups erstellt werden.
+- Der Server legt automatisch **täglich eine Sicherung** je Abteilung und je Instandhaltungsliste an (Stand vor der ersten Änderung des Tages, 30 Tage Aufbewahrung, `data/backups/`). Abteilungen lassen sich in der Oberfläche („DB“-Bereich) wiederherstellen; Instandhaltungslisten bisher nur manuell durch Zurückkopieren der Sicherungsdatei aus `data/backups/maintenance/`.
+
+### 7.5 Instandhaltungsliste: Zugriff & gleichzeitiges Arbeiten
+- Anmeldung mit Listenkürzel + persönlichem Kürzel. Rollen: **Melder** (Meldungen anlegen, eigene offene Meldungen ändern/löschen) und **Instandhaltung** (zusätzlich erledigen, alle Meldungen ändern/löschen, Kürzel und Standorte verwalten). Die Rollenprüfung erfolgt serverseitig, vertraut aber dem gemeldeten Kürzel (siehe Abschnitt 3).
+- Listen anlegen/löschen setzt das Admin-Passwort voraus, das der Server prüft.
+- Jede Aktion wird einzeln auf dem Server angewendet (nicht das ganze Dokument überschrieben). Gleichzeitige neue Meldungen gehen dadurch nicht verloren; ändern zwei Personen denselben Eintrag gleichzeitig, wird die zweite Änderung abgelehnt und der aktuelle Stand angezeigt (Revisionsnummer je Eintrag).
 
 ---
 
@@ -144,9 +160,10 @@ Beschäftigte haben das Recht auf:
 
 Für eine vollständige rechtliche Bewertung transparent aufgeführt — diese Punkte sind noch offen und sollten vor dem Produktivbetrieb mit Betriebsrat/DSB und IT-Abteilung geklärt werden:
 
-- **Keine automatisierte Datensicherung:** Backups entstehen nur, wenn manuell über „DB Export (JSON)“ ausgelöst — es gibt kein automatisches, regelmäßiges Backup der Server-Datendateien.
-- **Kein personenbezogenes Audit-Log:** Da es keine individuelle Anmeldung pro Mitarbeiter gibt (nur das geteilte Abteilungskürzel bzw. das Admin-Passwort), lässt sich nicht lückenlos nachvollziehen, welche Einzelperson eine bestimmte Änderung vorgenommen hat.
-- **Keine automatische Löschfrist:** Abwesenheits- und Mitarbeiterdaten bleiben bestehen, bis sie manuell gelöscht werden.
+- **Sicherungen nicht ausgelagert:** Die automatischen Tagessicherungen liegen auf demselben Server/Volume wie die Daten. Sie schützen vor Fehlbedienung, nicht vor Ausfall des Datenträgers — eine Sicherung des Datenverzeichnisses auf ein getrenntes System ist IT-seitig einzurichten.
+- **Kein vollständiges Audit-Log:** Im Schichtplan gibt es keine individuelle Anmeldung pro Mitarbeiter (nur das geteilte Abteilungskürzel bzw. das Admin-Passwort); es lässt sich nicht nachvollziehen, welche Einzelperson eine Änderung vorgenommen hat. In der Instandhaltungsliste werden Kürzel und Zeitstempel je Eintrag gespeichert, aber ohne Passwort/PIN — das ist kein manipulationssicheres Änderungsprotokoll.
+- **Keine automatische Löschfrist:** Abwesenheits- und Mitarbeiterdaten sowie Einträge der Instandhaltungsliste bleiben bestehen, bis sie manuell gelöscht werden.
+- **Admin-Passwort bei Abteilungen:** Das Anlegen und Löschen von Abteilungen wird bisher nur in der Oberfläche durch das Admin-Passwort geschützt, nicht zusätzlich serverseitig geprüft (bei der Instandhaltungsliste prüft der Server das Passwort). Wer das Netz erreicht und die Schnittstelle direkt aufruft, könnte eine Abteilung löschen (eine Tagessicherung bleibt erhalten).
 - **Datenübertragung aktuell ohne Transportverschlüsselung:** Der Server läuft standardmäßig per HTTP im lokalen Netz, nicht per HTTPS/TLS — vor Produktivbetrieb mit der IT-Abteilung abzustimmen.
 - **Zugriffstrennung auf Abteilungsebene, nicht auf Feldebene:** Jede Person mit Zugang zu einer Abteilung sieht auch den Krankheitsstatus aller Kolleg:innen dieser Abteilung.
 

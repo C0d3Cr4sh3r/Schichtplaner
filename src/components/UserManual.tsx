@@ -24,6 +24,7 @@ import {
   Layers,
   Sliders,
   Check,
+  Wrench,
 } from 'lucide-react';
 
 export const UserManual: React.FC = () => {
@@ -77,6 +78,7 @@ export const UserManual: React.FC = () => {
             { id: 'backup', label: '7. Backup, Sync & Speicher', icon: Database },
             { id: 'datenschutz', label: '8. Datenschutz & DSGVO', icon: ShieldCheck },
             { id: 'faq', label: '9. FAQ & Fehlerbehebung', icon: HelpCircle },
+            { id: 'instandhaltung', label: '10. Instandhaltungsliste', icon: Wrench },
           ].map((sec) => {
             const Icon = sec.icon;
             return (
@@ -775,6 +777,99 @@ export const UserManual: React.FC = () => {
                 <p className="text-xs text-slate-600 leading-relaxed">
                   Nein. Alle Daten werden automatisch auf dem Server im Verzeichnis <code>data/</code> gespeichert und
                   bleiben dauerhaft erhalten.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Section 10: Maintenance list */}
+        {(activeSection === 'all' || activeSection === 'instandhaltung') && (
+          <section id="instandhaltung" className="mb-12 scroll-mt-20 print:mb-8 break-inside-avoid-page">
+            <h2 className="font-display font-extrabold text-slate-900 text-xl mb-4 flex items-center gap-2 pb-1.5 border-b border-slate-100">
+              <span className="text-blue-600">10.</span> Instandhaltungsliste
+            </h2>
+
+            <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+              <p>
+                Die Instandhaltungsliste ist ein eigener Bereich neben dem Schichtplan: Störungen und Reparaturwünsche an
+                Maschinen werden dort gemeldet und von der Instandhaltung abgehakt. Sie erreichen sie auf der Startseite über den
+                Umschalter <strong>„Instandhaltungsliste“</strong>.
+              </p>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-blue-600" />
+                  Anmeldung
+                </h4>
+                <p>
+                  Eingegeben werden das <strong>Listenkürzel</strong> (das kennt Ihr Team) und Ihr <strong>persönliches Kürzel</strong>{' '}
+                  (z. B. Ihre Initialen). Das persönliche Kürzel bekommen Sie von der Instandhaltung. Unter diesem Kürzel
+                  erscheinen alle Ihre Einträge automatisch — Sie müssen es nicht jedes Mal neu eintippen. Mit „Abmelden“ beenden Sie die
+                  Sitzung; sie endet auch, wenn Sie den Browser-Tab schließen.
+                </p>
+                <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                  Hinweis: Das Kürzel ist eine Kennzeichnung, kein Passwort. Melden Sie sich an gemeinsam genutzten PCs immer ab.
+                </p>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-blue-600" />
+                  Rollen
+                </h4>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    <strong>Melder (Produktion):</strong> legt Meldungen an und kann seine <em>eigenen, noch offenen</em> Meldungen ändern oder
+                    löschen. Alle anderen Meldungen sind nur lesbar.
+                  </li>
+                  <li>
+                    <strong>Instandhaltung (ausführend):</strong> kann zusätzlich Meldungen als <strong>erledigt</strong> melden (optional mit Notiz,
+                    was gemacht wurde), wieder öffnen, alle Meldungen ändern oder löschen und im Reiter <strong>Verwaltung</strong> Kürzel und
+                    Standorte pflegen.
+                  </li>
+                </ul>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <Wrench className="w-4 h-4 text-blue-600" />
+                  Meldung anlegen
+                </h4>
+                <p>
+                  „Neue Meldung“ → Standort wählen, Bereich und Maschine eintragen (Vorschläge aus bisherigen Einträgen erscheinen beim Tippen),
+                  Beschreibung, Art (<strong>mechanisch</strong> oder <strong>elektrisch</strong>) und Dringlichkeit
+                  (<strong>niedrig, normal, hoch, sofort/Maschine steht</strong>) angeben. Jede Meldung bekommt eine laufende Nummer (#12), die Sie
+                  bei Rückfragen nennen können. Offene Meldungen stehen oben, sortiert nach Dringlichkeit.
+                </p>
+                <p>
+                  Bitte in der Beschreibung nur technische Angaben machen — keine Angaben zur Gesundheit oder zum Verhalten von Personen.
+                </p>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <RotateCw className="w-4 h-4 text-blue-600" />
+                  Gleichzeitiges Arbeiten
+                </h4>
+                <p>
+                  Mehrere Personen können gleichzeitig Meldungen eintragen — nichts geht verloren, die Liste aktualisiert sich alle paar Sekunden von
+                  selbst. Ändern zwei Personen <em>denselben</em> Eintrag gleichzeitig, wird die zweite Änderung nicht gespeichert (damit nichts
+                  überschrieben wird); Sie sehen dann einen Hinweis und können den aktuellen Stand laden und neu bearbeiten. Schlägt eine Aktion
+                  fehl (z. B. Verbindung weg), erscheint eine Fehlermeldung — dann wurde nichts gespeichert.
+                </p>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  Einrichtung (Admin)
+                </h4>
+                <p>
+                  Listen legt der Administrator im Admin-Bereich der Startseite an (Abschnitt „Instandhaltungslisten“): Listenkürzel, Name,
+                  Standorte (z. B. beide Werke) und das erste Kürzel mit der Rolle Instandhaltung. Weitere Kürzel und Standorte pflegt danach die
+                  Instandhaltung selbst im Reiter „Verwaltung“. Ein Standort kann nur entfernt werden, wenn keine Meldung ihn mehr verwendet. Das
+                  letzte aktive Instandhaltungs-Kürzel lässt sich nicht löschen oder deaktivieren.
                 </p>
               </div>
             </div>

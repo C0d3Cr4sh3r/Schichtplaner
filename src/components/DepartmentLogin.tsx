@@ -16,6 +16,7 @@ import {
   AlertCircle,
   AlertTriangle,
   LogOut,
+  Wrench,
   ChevronRight,
   RefreshCw,
   Info,
@@ -36,15 +37,20 @@ import {
 } from '../lib/storage';
 import { ArcanePixelsBrand } from './ArcanePixelsBrand';
 import { PrivacyModal } from './PrivacyModal';
+import { LoginTarget, LoginTargetSwitch, MaintenanceLoginForm } from './MaintenanceLogin';
+import { MaintenanceAdminSection } from './MaintenanceAdminSection';
+import { MaintSession } from '../lib/maintenanceStorage';
 
 interface DepartmentLoginProps {
   onLogin: (deptCode: string) => void;
   initialAdminMode?: boolean;
+  onMaintenanceLogin?: (session: MaintSession) => void;
 }
 
 export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   onLogin,
   initialAdminMode = false,
+  onMaintenanceLogin,
 }) => {
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   // Navigation mode: 'enter' (Mitarbeiter: Kürzel eingeben), 'admin-login' (Passwort), 'admin-panel' (Verwaltung)
@@ -53,6 +59,11 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   );
 
   const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
+
+  // Startseite: Schichtplan (Abteilungskürzel) oder Instandhaltungsliste (Listen- + persönliches Kürzel)
+  const [enterTarget, setEnterTarget] = useState<LoginTarget>('planner');
+  // Beim Admin-Login bestätigtes Passwort, nur im Speicher: der Admin-Bereich braucht es für die Verwaltung der Instandhaltungslisten.
+  const [verifiedAdminPassword, setVerifiedAdminPassword] = useState('');
 
   // Employee entrance state
   const [deptCodeInput, setDeptCodeInput] = useState('');
@@ -94,6 +105,10 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
   }, []);
 
   useEffect(() => {
+    if (!isAdminAuthenticated) setVerifiedAdminPassword('');
+  }, [isAdminAuthenticated]);
+
+  useEffect(() => {
     if (viewMode === 'admin-login') {
       isDefaultAdminPasswordAsync().then(setIsDefaultPassword);
     }
@@ -126,6 +141,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
     e.preventDefault();
     const isValid = await verifyAdminPasswordAsync(adminPasswordInput);
     if (isValid) {
+      setVerifiedAdminPassword(adminPasswordInput.trim());
       setIsAdminAuthenticated(true);
       setViewMode('admin-panel');
       setAdminAuthError(null);
@@ -177,6 +193,7 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
 
     const res = await changeAdminPasswordAsync(oldPassword, newPassword);
     if (res.success) {
+      setVerifiedAdminPassword(newPassword);
       setPasswordChangeSuccess('Admin-Passwort wurde erfolgreich geändert! Bitte gut notieren.');
       setOldPassword('');
       setNewPassword('');
@@ -238,8 +255,9 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
         {/* ---------------------------------------------------- */}
         {/* VIEW 1: Standard Employee Entrance (Kürzel eingeben) */}
         {/* ---------------------------------------------------- */}
-        {viewMode === 'enter' && (
+        {viewMode === 'enter' && enterTarget === 'planner' && (
           <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm space-y-6">
+            <LoginTargetSwitch value={enterTarget} onChange={setEnterTarget} />
             <div className="flex items-center justify-between pb-4 border-b border-slate-700/80">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
@@ -364,6 +382,39 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
               >
                 <Lock className="w-3.5 h-3.5 text-amber-400" />
                 <span>Admin-Login / Neue Abteilung</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------------------------------------------- */}
+        {/* VIEW 1b: Instandhaltungsliste (Listen- + persönliches Kürzel) */}
+        {/* ---------------------------------------------------- */}
+        {viewMode === 'enter' && enterTarget === 'maintenance' && onMaintenanceLogin && (
+          <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm space-y-6">
+            <LoginTargetSwitch value={enterTarget} onChange={setEnterTarget} />
+            <div className="flex items-center gap-3 pb-4 border-b border-slate-700/80">
+              <div className="p-2.5 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white">Instandhaltungsliste</h2>
+                <p className="text-xs text-slate-400">Störungen melden und Erledigtes abhaken - mit Ihrem persönlichen Kürzel</p>
+              </div>
+            </div>
+            <MaintenanceLoginForm onLogin={onMaintenanceLogin} />
+            <div className="pt-4 border-t border-slate-700/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <span className="text-slate-400 text-center sm:text-left">Listen und Kürzel anlegen oder ändern?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminAuthError(null);
+                  setViewMode('admin-login');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors cursor-pointer shrink-0"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Admin-Login</span>
               </button>
             </div>
           </div>
@@ -828,6 +879,11 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Instandhaltungslisten */}
+            <div className="pt-5 border-t border-slate-700">
+              <MaintenanceAdminSection adminPassword={verifiedAdminPassword} />
             </div>
 
             {/* Back to normal entrance */}
