@@ -309,6 +309,26 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
     [auth, act]
   );
 
+  // Hinweis-Fenster schließt auch bei Klick außerhalb und mit Escape (nicht nur über die Glocke).
+  const bellRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!noticesOpen) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setNoticesOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNoticesOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [noticesOpen]);
+
   const focusEntry = useCallback((entry: MaintenanceEntry) => {
     setTab('liste');
     setStatusFilter('alle');
@@ -389,7 +409,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
             )}
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative" ref={bellRef}>
               <button
                 type="button"
                 onClick={() => setNoticesOpen((v) => !v)}
