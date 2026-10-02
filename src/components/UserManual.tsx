@@ -856,6 +856,25 @@ export const UserManual: React.FC = () => {
 
               <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
                 <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-blue-600" />
+                  Zuweisen & Hinweise
+                </h4>
+                <p>
+                  Die Instandhaltung kann jede offene Meldung über die Auswahl neben der Meldung einer Person zuweisen („Zuständig: XY“).
+                  Wer eine Meldung zugewiesen bekommt, sieht sie über „mir zugewiesen“ oben bzw. den Filter „Mir zugewiesen“.
+                </p>
+                <p>
+                  Die <strong>Glocke</strong> oben zeigt Ihre <em>persönlichen</em> Hinweise: neue Meldungen und Sofort-Meldungen an den
+                  Standorten, für die Ihr Kürzel Hinweise bekommt (einstellbar in der Verwaltung, „Hinweise für Standorte“), Meldungen, die Ihnen
+                  zugewiesen wurden, und Fortschritt an Ihren eigenen Meldungen (provisorisch behoben / erledigt). Dringendes (Sofort-Meldung am
+                  eigenen Standort, Zuweisung) erscheint zusätzlich als rotes Banner; neue Meldungen sind mit „NEU“ markiert, und der Tab-Titel zeigt
+                  die Anzahl. „Als gelesen markieren“ gilt <strong>nur für Sie</strong> — wenn ein Kollege etwas gelesen hat, bleibt es für Sie
+                  ungelesen. Hinweise erscheinen nur, solange die Liste im Browser geöffnet ist.
+                </p>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
                   <RotateCw className="w-4 h-4 text-blue-600" />
                   Gleichzeitiges Arbeiten
                 </h4>

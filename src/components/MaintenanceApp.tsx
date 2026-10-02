@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Bell,
   Check,
   Cog,
   Database,
@@ -30,7 +31,9 @@ import {
   URGENCY_LABELS,
   Urgency,
   canModifyEntry,
+  computeNotices,
   isProvisionalOverdue,
+  MaintenanceNotice,
 } from '../lib/maintenanceLogic';
 import {
   EntryInput,
@@ -39,9 +42,11 @@ import {
   MaintResult,
   MaintSession,
   isMaintenanceLocalDemo,
+  maintAssignAsync,
   maintCreateEntryAsync,
   maintDeleteEntryAsync,
   maintFetchListAsync,
+  maintMarkSeenAsync,
   maintSetDoneAsync,
   maintSetProvisionalAsync,
   maintUpdateEntryAsync,
@@ -66,6 +71,19 @@ function formatDateTime(iso?: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function noticeLabel(n: MaintenanceNotice): string {
+  switch (n.kind) {
+    case 'assigned':
+      return 'Ihnen zugewiesen';
+    case 'sofort':
+      return 'Sofort-Meldung';
+    case 'neu':
+      return 'Neue Meldung';
+    default:
+      return n.entry.done ? 'Ihre Meldung wurde erledigt' : 'Ihre Meldung: provisorisch behoben';
+  }
 }
 
 function todayLocal(): string {
@@ -120,6 +138,9 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
   const [disciplineFilter, setDisciplineFilter] = useState<'' | Discipline>('');
   const [urgencyFilter, setUrgencyFilter] = useState<'' | Urgency>('');
   const [search, setSearch] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState<'' | 'mine' | 'none'>('');
+  const [noticesOpen, setNoticesOpen] = useState(false);
+  const [flashNumber, setFlashNumber] = useState<number | null>(null);
 
   const [formState, setFormState] = useState<{ mode: 'create' } | { mode: 'edit'; entry: MaintenanceEntry } | null>(null);
   const [doneTarget, setDoneTarget] = useState<{ entry: MaintenanceEntry; mode: 'done' | 'provisional' } | null>(null);
@@ -228,6 +249,8 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
         if (locationFilter && e.location !== locationFilter) return false;
         if (disciplineFilter && e.discipline !== disciplineFilter) return false;
         if (urgencyFilter && e.urgency !== urgencyFilter) return false;
+        if (assigneeFilter === 'mine' && e.assignedTo !== session.kuerzel) return false;
+        if (assigneeFilter === 'none' && e.assignedTo) return false;
         if (q) {
           const hay = `${e.number} ${e.machine} ${e.area} ${e.description} ${e.createdBy} ${e.doneNote || ''}`.toLowerCase();
           if (!hay.includes(q)) return false;
@@ -235,7 +258,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
         return true;
       })
     );
-  }, [list, statusFilter, locationFilter, disciplineFilter, urgencyFilter, search, today]);
+  }, [list, statusFilter, locationFilter, disciplineFilter, urgencyFilter, assigneeFilter, search, today, session.kuerzel]);
 
   const stats = useMemo(() => {
     const entries = list?.entries ?? [];
@@ -243,10 +266,64 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
       open: entries.filter((e) => !e.done && !e.provisional).length,
       provisional: entries.filter((e) => !e.done && e.provisional).length,
       overdue: entries.filter((e) => isProvisionalOverdue(e, today)).length,
+      mine: entries.filter((e) => !e.done && e.assignedTo === session.kuerzel).length,
       urgent: entries.filter((e) => !e.done && e.urgency === 'sofort').length,
       done: entries.filter((e) => e.done).length,
     };
-  }, [list, today]);
+  }, [list, today, session.kuerzel]);
+
+  // ---- Hinweise: persönlich pro Kürzel, aus den Daten abgeleitet (siehe computeNotices)
+  const notices = useMemo(() => (list ? computeNotices(list, session.kuerzel) : []), [list, session.kuerzel]);
+  const noticeByEntry = useMemo(() => new Map(notices.map((n) => [n.entry.id, n])), [notices]);
+  const urgentNotices = notices.filter((n) => n.urgent);
+
+  // Erstmalig (noch kein persönlicher Marker): Marker auf "jetzt" setzen, damit der Altbestand nicht als neu gilt.
+  const initSeenRef = useRef(false);
+  useEffect(() => {
+    if (!list || initSeenRef.current) return;
+    const mine = list.users.find((u) => u.kuerzel === session.kuerzel);
+    if (mine && !mine.seenAt) {
+      initSeenRef.current = true;
+      maintMarkSeenAsync(auth, new Date().toISOString()).then((res) => {
+        if (res.ok) applyMutationList(res.data.list);
+      });
+    }
+  }, [list, session.kuerzel, auth, applyMutationList]);
+
+  // Zähler im Tab-Titel, damit neue Hinweise auch bei verdecktem Fenster auffallen.
+  useEffect(() => {
+    const original = document.title;
+    document.title = notices.length > 0 ? `(${notices.length}) Instandhaltungsliste` : 'Instandhaltungsliste';
+    return () => {
+      document.title = original;
+    };
+  }, [notices.length]);
+
+  // Alles bis zum neuesten angezeigten Hinweis als gelesen markieren (später eintreffende bleiben ungelesen).
+  const markNoticesSeen = useCallback(
+    async (shown: MaintenanceNotice[]) => {
+      if (shown.length === 0) return;
+      const upTo = shown.reduce((max, n) => (n.at > max ? n.at : max), shown[0].at);
+      await act(() => maintMarkSeenAsync(auth, upTo));
+    },
+    [auth, act]
+  );
+
+  const focusEntry = useCallback((entry: MaintenanceEntry) => {
+    setTab('liste');
+    setStatusFilter('alle');
+    setLocationFilter('');
+    setDisciplineFilter('');
+    setUrgencyFilter('');
+    setAssigneeFilter('');
+    setSearch('');
+    setNoticesOpen(false);
+    setFlashNumber(entry.number);
+    setTimeout(() => {
+      document.querySelector(`li[data-entry-number="${entry.number}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 80);
+    setTimeout(() => setFlashNumber(null), 3000);
+  }, []);
 
   if (sessionInvalid) {
     return (
@@ -312,6 +389,50 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
             )}
           </div>
           <div className="flex items-center gap-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setNoticesOpen((v) => !v)}
+                aria-label={`Hinweise (${notices.length} ungelesen)`}
+                aria-expanded={noticesOpen}
+                className={`relative inline-flex items-center gap-1 px-2 py-1 rounded-md border cursor-pointer ${notices.length > 0 ? 'bg-blue-50 border-blue-300 text-blue-800' : 'border-slate-200 text-slate-500 hover:bg-slate-100'}`}
+              >
+                <Bell className="w-3.5 h-3.5" />
+                {notices.length > 0 && <span className="font-bold">{notices.length}</span>}
+              </button>
+              {noticesOpen && (
+                <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 text-sm" role="dialog" aria-label="Hinweise">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
+                    <span className="font-semibold">Hinweise für {session.kuerzel}</span>
+                    <button
+                      type="button"
+                      disabled={notices.length === 0}
+                      onClick={() => markNoticesSeen(notices)}
+                      className="text-xs text-blue-700 underline disabled:opacity-40 cursor-pointer"
+                    >
+                      Alle als gelesen markieren
+                    </button>
+                  </div>
+                  {notices.length === 0 ? (
+                    <p className="px-3 py-4 text-slate-500 text-xs">Keine neuen Hinweise. Die Markierung gilt nur für Sie — was andere gelesen haben, ändert nichts.</p>
+                  ) : (
+                    <ul className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      {notices.map((n) => (
+                        <li key={n.entry.id}>
+                          <button type="button" onClick={() => focusEntry(n.entry)} className="w-full text-left px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                            <div className={`text-xs font-semibold ${n.urgent ? 'text-red-700' : 'text-blue-700'}`}>{noticeLabel(n)}</div>
+                            <div className="text-slate-800">
+                              #{n.entry.number} · {n.entry.machine} <span className="text-slate-500">({n.entry.location})</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">{formatDateTime(n.at)}</div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
             <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700" title={ROLE_LABELS[role]}>
               <UserRound className="w-3.5 h-3.5 text-slate-500" />
               <span className="font-mono font-bold">{session.kuerzel}</span>
@@ -351,6 +472,21 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+        {list && urgentNotices.length > 0 && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900" data-testid="urgent-banner">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <strong>{noticeLabel(urgentNotices[0])}:</strong> #{urgentNotices[0].entry.number} · {urgentNotices[0].entry.machine} ({urgentNotices[0].entry.location})
+              {urgentNotices.length > 1 && <span> – und {urgentNotices.length - 1} weitere dringende</span>}
+            </div>
+            <button type="button" onClick={() => focusEntry(urgentNotices[0].entry)} className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer">
+              Anzeigen
+            </button>
+            <button type="button" onClick={() => markNoticesSeen(notices)} className="px-3 py-1 rounded-lg border border-red-300 hover:bg-red-100 text-xs font-medium cursor-pointer">
+              Gelesen
+            </button>
+          </div>
+        )}
         {!list ? (
           <div className="py-16 text-center text-slate-500 flex items-center justify-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -373,6 +509,11 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                     <AlertTriangle className="w-4 h-4" />
                     {stats.urgent} sofort
                   </span>
+                )}
+                {stats.mine > 0 && (
+                  <button type="button" onClick={() => setAssigneeFilter('mine')} className="text-blue-700 font-medium underline cursor-pointer" title="Mir zugewiesene offene Meldungen anzeigen">
+                    {stats.mine} mir zugewiesen
+                  </button>
                 )}
                 {stats.overdue > 0 && (
                   <span className="text-red-700 font-semibold inline-flex items-center gap-1" title="Frist für die Nachbearbeitung überschritten">
@@ -433,6 +574,11 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                   </option>
                 ))}
               </select>
+              <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value as '' | 'mine' | 'none')} aria-label="Zuständigkeit" className={selectClass}>
+                <option value="">Alle Zuständigkeiten</option>
+                <option value="mine">Mir zugewiesen</option>
+                <option value="none">Nicht zugewiesen</option>
+              </select>
               <select value={urgencyFilter} onChange={(e) => setUrgencyFilter(e.target.value as '' | Urgency)} aria-label="Dringlichkeit" className={selectClass}>
                 <option value="">Alle Dringlichkeiten</option>
                 {URGENCIES.map((u) => (
@@ -454,7 +600,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                   const style = URGENCY_STYLE[entry.urgency];
                   const mayModify = canModifyEntry({ kuerzel: session.kuerzel, role }, entry);
                   return (
-                    <li key={entry.id} className={`flex bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs ${entry.done ? 'opacity-80' : ''}`} data-entry-number={entry.number}>
+                    <li key={entry.id} className={`flex bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs ${entry.done ? 'opacity-80' : ''} ${flashNumber === entry.number ? 'ring-2 ring-blue-500' : ''}`} data-entry-number={entry.number}>
                       <div className={`w-1.5 shrink-0 ${entry.done ? 'bg-emerald-400' : isProvisionalOverdue(entry, today) ? 'bg-red-600' : entry.provisional ? 'bg-violet-500' : style.bar}`} aria-hidden />
                       <div className="flex-1 p-4 min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -463,6 +609,20 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                           <span className="text-sm text-slate-600">
                             {entry.location} · {entry.area}
                           </span>
+                          {noticeByEntry.has(entry.id) && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-blue-600 text-white font-bold" title="Für Sie neu seit Ihrem letzten „Gelesen“">
+                              NEU
+                            </span>
+                          )}
+                          {entry.assignedTo && (
+                            <span
+                              className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${entry.assignedTo === session.kuerzel ? 'border-blue-500 bg-blue-50 text-blue-800 font-semibold' : 'border-slate-300 bg-white text-slate-600'}`}
+                              title={`Zugewiesen von ${entry.assignedBy ?? '?'} am ${formatDateTime(entry.assignedAt)}`}
+                            >
+                              <UserRound className="w-3 h-3" />
+                              Zuständig: {entry.assignedTo}
+                            </span>
+                          )}
                           <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-slate-700">
                             {entry.discipline === 'elektrisch' ? <Zap className="w-3 h-3 text-yellow-600" /> : <Cog className="w-3 h-3 text-slate-600" />}
                             {DISCIPLINE_LABELS[entry.discipline]}
@@ -509,6 +669,29 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                         </div>
                       </div>
                       <div className="flex flex-col items-end justify-center gap-1.5 p-3 shrink-0">
+                        {isManager && !entry.done && (
+                          <select
+                            value={entry.assignedTo ?? ''}
+                            aria-label={`Meldung ${entry.number} zuweisen`}
+                            onChange={(e) =>
+                              act(
+                                () => maintAssignAsync(auth, entry.id, entry.rev, e.target.value),
+                                e.target.value ? `#${entry.number} an ${e.target.value} zugewiesen.` : `Zuweisung von #${entry.number} aufgehoben.`
+                              )
+                            }
+                            className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white text-slate-800 max-w-[9.5rem]"
+                          >
+                            <option value="">Nicht zugewiesen</option>
+                            {list.users
+                              .filter((u) => u.active && u.role === 'instandhaltung')
+                              .map((u) => (
+                                <option key={u.kuerzel} value={u.kuerzel}>
+                                  {u.kuerzel}
+                                  {u.name ? ` – ${u.name}` : ''}
+                                </option>
+                              ))}
+                          </select>
+                        )}
                         {isManager &&
                           (entry.done ? (
                             <button

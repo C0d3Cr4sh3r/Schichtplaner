@@ -5,6 +5,10 @@ import {
   updateEntry,
   setEntryDone,
   setEntryProvisional,
+  setEntryAssignee,
+  computeNotices,
+  markSeen,
+  publicListFor,
   isProvisionalOverdue,
   isValidDateStr,
   deleteEntry,
@@ -506,5 +510,198 @@ describe('Wiedervorlage (Nachbearbeiten bis)', () => {
     expect(isProvisionalOverdue({ ...base, done: true }, '2026-12-01')).toBe(false);
     expect(isProvisionalOverdue({ ...base, provisional: false }, '2026-12-01')).toBe(false);
     expect(isProvisionalOverdue({ ...base, provisionalDue: undefined }, '2026-12-01')).toBe(false);
+  });
+});
+
+describe('Zuweisung (setEntryAssignee)', () => {
+  function withTech() {
+    const base = baseList();
+    const t = addUser(base, user('IH1'), { kuerzel: 'ih2', name: 'Tom', role: 'instandhaltung' }, NOW);
+    if (!t.ok) throw new Error('setup');
+    return t.list;
+  }
+  it('nur Instandhaltung, nur an aktive Instandhaltungs-Kürzel', () => {
+    const { list, entry } = withEntry(withTech(), 'MA1');
+    const denied = setEntryAssignee(list, user('MA1'), entry.id, 'IH2', entry.rev, LATER);
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.status).toBe(403);
+    expect(setEntryAssignee(list, user('IH1'), entry.id, 'MB2', entry.rev, LATER).ok).toBe(false); // Melder
+    expect(setEntryAssignee(list, user('IH1'), entry.id, 'ZZZ', entry.rev, LATER).ok).toBe(false); // unbekannt
+    const off = updateUser(list, admin, 'IH2', { active: false }, NOW);
+    if (!off.ok) throw new Error('setup');
+    expect(setEntryAssignee(off.list, user('IH1'), entry.id, 'IH2', entry.rev, LATER).ok).toBe(false); // deaktiviert
+  });
+  it('setzt Zuweisung, hebt sie auf, ändert nichts bei gleichem Ziel', () => {
+    const { list, entry } = withEntry(withTech(), 'MA1');
+    const a = setEntryAssignee(list, user('IH1'), entry.id, 'ih2', entry.rev, LATER);
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    expect(a.value.assignedTo).toBe('IH2');
+    expect(a.value.assignedBy).toBe('IH1');
+    expect(a.value.assignedAt).toBe(LATER);
+    expect(a.value.rev).toBe(2);
+    const same = setEntryAssignee(a.list, user('IH1'), entry.id, 'IH2', a.value.rev, LATER);
+    expect(same.ok && same.list === a.list).toBe(true);
+    const cleared = setEntryAssignee(a.list, user('IH1'), entry.id, '', a.value.rev, LATER);
+    expect(cleared.ok).toBe(true);
+    if (cleared.ok) {
+      expect(cleared.value.assignedTo).toBeUndefined();
+      expect(cleared.value.assignedBy).toBeUndefined();
+    }
+  });
+  it('nicht bei erledigten Einträgen; Revisionskonflikt wird erkannt', () => {
+    const { list, entry } = withEntry(withTech(), 'MA1');
+    const a = setEntryAssignee(list, user('IH1'), entry.id, 'IH2', entry.rev, LATER);
+    if (!a.ok) throw new Error('setup');
+    const stale = setEntryAssignee(a.list, user('IH1'), entry.id, 'IH1', entry.rev, LATER);
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.status).toBe(409);
+    const done = setEntryDone(a.list, user('IH1'), entry.id, true, '', a.value.rev, LATER);
+    if (!done.ok) throw new Error('setup');
+    expect(setEntryAssignee(done.list, user('IH1'), entry.id, 'IH1', done.value.rev, LATER).ok).toBe(false);
+  });
+});
+
+describe('Standorte für Hinweise (notifyLocations)', () => {
+  it('Prüfung gegen vorhandene Standorte, Duplikate werden zusammengefasst', () => {
+    const list = baseList();
+    const ok = updateUser(list, user('IH1'), 'IH1', { notifyLocations: ['Werk Nord', 'Werk Nord', 'Werk Süd'] }, LATER);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.value.notifyLocations).toEqual(['Werk Nord', 'Werk Süd']);
+    expect(updateUser(list, user('IH1'), 'IH1', { notifyLocations: ['Mars'] }, LATER).ok).toBe(false);
+    expect(updateUser(list, user('IH1'), 'IH1', { notifyLocations: 'Werk Nord' }, LATER).ok).toBe(false);
+  });
+  it('erstmaliges Einschalten setzt den Marker auf jetzt (kein Altbestand als neu)', () => {
+    const r = updateUser(baseList(), admin, 'IH1', { notifyLocations: ['Werk Nord'] }, LATER);
+    expect(r.ok && r.value.seenAt).toBe(LATER);
+  });
+  it('nur Instandhaltung/Admin darf das einstellen', () => {
+    expect(updateUser(baseList(), user('MA1'), 'MA1', { notifyLocations: ['Werk Nord'] }, LATER).ok).toBe(false);
+  });
+  it('wird ein Standort entfernt, verschwindet er auch aus den Hinweis-Einstellungen', () => {
+    const a = updateUser(baseList(), admin, 'IH1', { notifyLocations: ['Werk Nord', 'Werk Süd'] }, LATER);
+    if (!a.ok) throw new Error('setup');
+    const s = updateSettings(a.list, admin, { locations: ['Werk Nord'] }, LATER);
+    expect(s.ok).toBe(true);
+    if (s.ok) expect(s.list.users.find((u) => u.kuerzel === 'IH1')?.notifyLocations).toEqual(['Werk Nord']);
+  });
+  it('neues Kürzel bekommt Marker = jetzt', () => {
+    const r = addUser(baseList(), admin, { kuerzel: 'ih3', role: 'instandhaltung', notifyLocations: ['Werk Süd'] }, LATER);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.seenAt).toBe(LATER);
+      expect(r.value.notifyLocations).toEqual(['Werk Süd']);
+    }
+  });
+});
+
+describe('Hinweise (computeNotices) - persönlich', () => {
+  const T0 = '2026-10-02T08:00:00.000Z'; // Marker
+  const T1 = '2026-10-02T09:00:00.000Z'; // nach dem Marker
+  function setup() {
+    // IH1 (Disponent) bekommt Hinweise für Werk Nord, IH2 (Techniker) für nichts; alle Marker T0
+    let list = baseList();
+    const t = addUser(list, admin, { kuerzel: 'ih2', role: 'instandhaltung' }, T0);
+    if (!t.ok) throw new Error('setup');
+    const u = updateUser(t.list, admin, 'IH1', { notifyLocations: ['Werk Nord'] }, T0);
+    if (!u.ok) throw new Error('setup');
+    list = { ...u.list, users: u.list.users.map((x) => ({ ...x, seenAt: T0 })) };
+    return list;
+  }
+  const mk = (list: MaintenanceList, by: string, over: Record<string, unknown> = {}) => {
+    const r = createEntry(list, user(by), { ...validEntry, ...over }, T1, newId);
+    if (!r.ok) throw new Error(r.error);
+    return { list: r.list, entry: r.value };
+  };
+
+  it('neue Meldung am Hinweis-Standort -> Hinweis; anderer Standort / ohne Standort -> keiner', () => {
+    const { list, entry } = mk(setup(), 'MA1');
+    const n = computeNotices(list, 'IH1');
+    expect(n.length).toBe(1);
+    expect(n[0].kind).toBe('neu');
+    expect(n[0].entry.id).toBe(entry.id);
+    expect(computeNotices(list, 'IH2')).toEqual([]);
+    const south = mk(setup(), 'MA1', { location: 'Werk Süd' });
+    expect(computeNotices(south.list, 'IH1')).toEqual([]);
+  });
+  it('Marker ist persönlich: Gelesen bei IH1 ändert nichts für andere', () => {
+    let { list } = mk(setup(), 'MA1');
+    list = { ...list, users: list.users.map((u) => (u.kuerzel === 'IH2' ? { ...u, notifyLocations: ['Werk Nord'] } : u)) };
+    expect(computeNotices(list, 'IH1').length).toBe(1);
+    expect(computeNotices(list, 'IH2').length).toBe(1);
+    const seen = markSeen(list, user('IH1'), '2026-10-02T09:30:00.000Z', '2026-10-02T09:40:00.000Z');
+    expect(seen.ok).toBe(true);
+    if (!seen.ok) return;
+    expect(computeNotices(seen.list, 'IH1')).toEqual([]);
+    expect(computeNotices(seen.list, 'IH2').length).toBe(1);
+  });
+  it('Sofort-Meldung ist dringend; eigene Meldungen lösen keinen Hinweis aus', () => {
+    const s = mk(setup(), 'MA1', { urgency: 'sofort' });
+    const n = computeNotices(s.list, 'IH1');
+    expect(n[0].kind).toBe('sofort');
+    expect(n[0].urgent).toBe(true);
+    const own = mk(setup(), 'IH1', { urgency: 'sofort' });
+    expect(computeNotices(own.list, 'IH1')).toEqual([]);
+  });
+  it('Zuweisung an mich -> dringender Hinweis, auch ohne Hinweis-Standort; selbst zugewiesen -> keiner', () => {
+    const { list, entry } = mk(setup(), 'MA1', { location: 'Werk Süd' });
+    const a = setEntryAssignee(list, user('IH1'), entry.id, 'IH2', entry.rev, T1);
+    if (!a.ok) throw new Error('setup');
+    const n = computeNotices(a.list, 'IH2');
+    expect(n.length).toBe(1);
+    expect(n[0].kind).toBe('assigned');
+    expect(n[0].urgent).toBe(true);
+    const self = setEntryAssignee(list, user('IH2'), entry.id, 'IH2', entry.rev, T1);
+    if (!self.ok) throw new Error('setup');
+    expect(computeNotices(self.list, 'IH2')).toEqual([]);
+  });
+  it('Fortschritt an meiner Meldung (provisorisch/erledigt durch andere) -> Hinweis für den Melder', () => {
+    const { list, entry } = mk(setup(), 'MA1');
+    const p = setEntryProvisional(list, user('IH1'), entry.id, true, 'Schelle', entry.rev, T1);
+    if (!p.ok) throw new Error('setup');
+    expect(computeNotices(p.list, 'MA1').map((x) => x.kind)).toEqual(['fortschritt']);
+    const seen = markSeen(p.list, user('MA1'), T1, '2026-10-02T09:10:00.000Z');
+    if (!seen.ok) throw new Error('setup');
+    expect(computeNotices(seen.list, 'MA1')).toEqual([]);
+    const d = setEntryDone(seen.list, user('IH1'), entry.id, true, 'getauscht', p.value.rev, '2026-10-02T09:20:00.000Z');
+    if (!d.ok) throw new Error('setup');
+    expect(computeNotices(d.list, 'MA1').length).toBe(1);
+  });
+  it('pro Meldung höchstens ein Hinweis, Dringendes zuerst; ohne Marker keine Flut', () => {
+    let { list } = mk(setup(), 'MA1', { machine: 'ALT' });
+    const b = mk(list, 'MA1', { urgency: 'sofort', machine: 'DRINGEND' });
+    list = b.list;
+    const n = computeNotices(list, 'IH1');
+    expect(n.length).toBe(2);
+    expect(n[0].entry.machine).toBe('DRINGEND');
+    const noMarker = { ...list, users: list.users.map((u) => ({ ...u, seenAt: undefined })) };
+    expect(computeNotices(noMarker, 'IH1')).toEqual([]);
+  });
+});
+
+describe('markSeen und publicListFor', () => {
+  it('Marker geht nie zurück und nie in die Zukunft', () => {
+    // MA1 hat durch addUser bereits den Marker NOW (10:00)
+    const a = markSeen(baseList(), user('MA1'), '2026-10-02T11:00:00.000Z', '2026-10-02T12:00:00.000Z');
+    if (!a.ok) throw new Error('setup');
+    expect(a.list.users.find((u) => u.kuerzel === 'MA1')?.seenAt).toBe('2026-10-02T11:00:00.000Z');
+    const back = markSeen(a.list, user('MA1'), '2026-10-02T08:00:00.000Z', '2026-10-02T12:00:00.000Z');
+    expect(back.ok && back.list === a.list).toBe(true);
+    const future = markSeen(a.list, user('MA1'), '2099-01-01T00:00:00.000Z', '2026-10-02T12:00:00.000Z');
+    expect(future.ok && future.list.users.find((u) => u.kuerzel === 'MA1')?.seenAt).toBe('2026-10-02T12:00:00.000Z');
+  });
+  it('unbekanntes Kürzel, Admin und ungültiger Zeitpunkt werden abgewiesen', () => {
+    expect(markSeen(baseList(), user('ZZZ'), NOW, NOW).ok).toBe(false);
+    expect(markSeen(baseList(), admin, NOW, NOW).ok).toBe(false);
+    expect(markSeen(baseList(), user('MA1'), 'gestern', NOW).ok).toBe(false);
+  });
+  it('publicListFor liefert nur den eigenen Marker aus', () => {
+    let list = baseList();
+    list = { ...list, users: list.users.map((u) => ({ ...u, seenAt: '2026-10-02T09:00:00.000Z' })) };
+    const view = publicListFor(list, user('MA1'));
+    expect(view.users.find((u) => u.kuerzel === 'MA1')?.seenAt).toBe('2026-10-02T09:00:00.000Z');
+    expect(view.users.filter((u) => u.kuerzel !== 'MA1').every((u) => u.seenAt === undefined)).toBe(true);
+    expect(publicListFor(list, admin).users.every((u) => u.seenAt === undefined)).toBe(true);
+    expect(list.users.every((u) => u.seenAt)).toBe(true);
   });
 });

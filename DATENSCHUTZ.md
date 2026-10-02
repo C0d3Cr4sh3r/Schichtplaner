@@ -70,7 +70,8 @@ Maschinenbezeichnung, Standort/Halle, Schichtmodell, Mindestbesetzung, Status.
 ### Instandhaltungsliste (eigener Bereich, getrennt von den Abteilungen)
 - Pro Meldung: Standort, Bereich, Maschine, Beschreibung (Freitext), Art (mechanisch/elektrisch), Dringlichkeit, Status (offen/erledigt), optionale Erledigt-Notiz
 - Das **persönliche Kürzel** der Person, die eine Meldung angelegt, geändert oder als erledigt gemeldet hat, jeweils mit Zeitstempel
-- Pro Kürzel: das Kürzel selbst, ein optionaler Name und die Rolle (Melder / Instandhaltung)
+- Pro Kürzel: das Kürzel selbst, ein optionaler Name und die Rolle (Melder / Instandhaltung), die Standorte, für die Hinweise gewünscht sind, sowie ein **persönlicher Gelesen-Marker** (Zeitpunkt, bis zu dem die Person Hinweise als gesehen markiert hat). Der Marker wird nur an die jeweilige Person ausgeliefert und ist für andere nicht sichtbar; es gibt keine Lesebestätigungen.
+- Bei einer Zuweisung: wem die Meldung zugewiesen wurde, von wem und wann
 - Ein Kürzel ist eine **Kennzeichnung, keine Authentifizierung** (es gibt kein Passwort/keine PIN). Wer ein gültiges Kürzel kennt, kann sich damit anmelden; die Zuordnung von Einträgen zu Personen ist deshalb nicht manipulationssicher.
 - In Freitextfeldern (Beschreibung, Erledigt-Notiz) sollen keine Angaben zu Gesundheit oder Verhalten von Personen stehen; die Software prüft das nicht.
 - Da Einträge einer Person zugeordnet werden können („erledigt von“), ist vor dem Einsatz mit dem Betriebsrat zu klären, ob Mitbestimmungsrechte berührt sind (§ 87 Abs. 1 Nr. 6 BetrVG).

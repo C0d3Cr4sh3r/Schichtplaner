@@ -110,6 +110,7 @@ export const MaintenanceManage: React.FC<MaintenanceManageProps> = ({ auth, list
                 <th className="text-left px-3 py-2">Kürzel</th>
                 <th className="text-left px-3 py-2">Name (optional)</th>
                 <th className="text-left px-3 py-2">Rolle</th>
+                <th className="text-left px-3 py-2" title="Für welche Standorte diese Person Hinweise zu neuen und dringenden Meldungen bekommt. Nichts angehakt = keine Hinweise.">Hinweise für Standorte</th>
                 <th className="text-left px-3 py-2">Aktiv</th>
                 <th className="px-3 py-2" />
               </tr>
@@ -117,7 +118,7 @@ export const MaintenanceManage: React.FC<MaintenanceManageProps> = ({ auth, list
             <tbody>
               {list.users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
+                  <td colSpan={6} className="px-3 py-4 text-center text-slate-500">
                     Noch kein Kürzel angelegt. Legen Sie zuerst ein Kürzel mit der Rolle „Instandhaltung“ an.
                   </td>
                 </tr>
@@ -151,6 +152,29 @@ export const MaintenanceManage: React.FC<MaintenanceManageProps> = ({ auth, list
                         </option>
                       ))}
                     </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {list.locations.map((loc) => {
+                        const checked = (u.notifyLocations ?? []).includes(loc);
+                        return (
+                          <label key={loc} className="inline-flex items-center gap-1 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              aria-label={`${u.kuerzel}: Hinweise für ${loc}`}
+                              onChange={(e) => {
+                                const current = u.notifyLocations ?? [];
+                                const next = e.target.checked ? [...current, loc] : current.filter((l) => l !== loc);
+                                run(() => maintUpdateUserAsync(auth, u.kuerzel, { notifyLocations: next }));
+                              }}
+                              className="w-3.5 h-3.5"
+                            />
+                            {loc}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <input

@@ -22,7 +22,9 @@ import {
   findActiveUser,
   normalizeKuerzel,
   normalizeListCode,
+  markSeen,
   removeUser,
+  setEntryAssignee,
   setEntryDone,
   setEntryProvisional,
   updateEntry,
@@ -383,15 +385,23 @@ export function maintSetProvisionalAsync(auth: MaintAuth, id: string, baseRev: n
   return mutate(auth, 'POST', `${entryUrl(auth, id)}/provisional`, { baseRev, provisional, note, due }, (l, a, now) => setEntryProvisional(l, a, id, provisional, note, baseRev, now, due), (v) => v as MaintenanceEntry);
 }
 
+export function maintAssignAsync(auth: MaintAuth, id: string, baseRev: number, assignee: string) {
+  return mutate(auth, 'POST', `${entryUrl(auth, id)}/assign`, { baseRev, assignee }, (l, a, now) => setEntryAssignee(l, a, id, assignee, baseRev, now), (v) => v as MaintenanceEntry);
+}
+
+export function maintMarkSeenAsync(auth: MaintAuth, upTo: string) {
+  return mutate(auth, 'POST', `/api/maintenance/${encodeURIComponent(auth.listCode)}/seen`, { upTo }, (l, a, now) => markSeen(l, a, upTo, now));
+}
+
 export function maintDeleteEntryAsync(auth: MaintAuth, id: string, baseRev: number) {
   return mutate(auth, 'DELETE', `${entryUrl(auth, id)}?baseRev=${baseRev}`, undefined, (l, a, now) => deleteEntry(l, a, id, baseRev, now));
 }
 
-export function maintAddUserAsync(auth: MaintAuth, input: { kuerzel: string; name: string; role: MaintenanceRole }) {
+export function maintAddUserAsync(auth: MaintAuth, input: { kuerzel: string; name: string; role: MaintenanceRole; notifyLocations?: string[] }) {
   return mutate(auth, 'POST', userUrl(auth), input, (l, a, now) => addUser(l, a, input, now));
 }
 
-export function maintUpdateUserAsync(auth: MaintAuth, kuerzel: string, patch: { name?: string; role?: MaintenanceRole; active?: boolean }) {
+export function maintUpdateUserAsync(auth: MaintAuth, kuerzel: string, patch: { name?: string; role?: MaintenanceRole; active?: boolean; notifyLocations?: string[] }) {
   return mutate(auth, 'PATCH', userUrl(auth, kuerzel), patch, (l, a, now) => updateUser(l, a, kuerzel, patch, now));
 }
 

@@ -15,7 +15,10 @@ import {
   findActiveUser,
   normalizeKuerzel,
   normalizeListCode,
+  markSeen,
+  publicListFor,
   removeUser,
+  setEntryAssignee,
   setEntryDone,
   setEntryProvisional,
   updateEntry,
@@ -1040,12 +1043,12 @@ function getMaintActor(req: Request, res: Response): Actor | null {
   return { type: 'user', kuerzel: normalizeKuerzel(headerValue(req, 'x-kuerzel')) };
 }
 
-function sendMaintFailure(res: Response, failure: LogicFailure, list?: MaintenanceList): void {
+function sendMaintFailure(res: Response, failure: LogicFailure, list?: MaintenanceList, actor?: Actor): void {
   const body: Record<string, unknown> = { error: failure.error };
   if (failure.currentEntry !== undefined) body.currentEntry = failure.currentEntry;
   // Bei Konflikt / gelöschtem Eintrag den aktuellen Stand gleich mitliefern,
   // damit der Client sofort aktualisieren kann.
-  if (list && (failure.status === 409 || failure.status === 404)) body.list = list;
+  if (list && (failure.status === 409 || failure.status === 404)) body.list = actor ? publicListFor(list, actor) : list;
   res.status(failure.status).json(body);
 }
 
@@ -1069,11 +1072,13 @@ function runMaintMutation<T>(
     }
     const result = fn(list, actor, new Date().toISOString());
     if (!result.ok) {
-      sendMaintFailure(res, result, list);
+      sendMaintFailure(res, result, list, actor);
       return;
     }
-    persistMaintList(code, result.list);
-    res.status(status).json({ list: result.list, ...(extra ? extra(result.value) : {}) });
+    // Wurde nichts verändert (gleicher Stand), nicht erneut schreiben.
+    if (result.list !== list) persistMaintList(code, result.list);
+    // Gelesen-Marker anderer Personen nie ausliefern (keine sichtbaren Lesebestätigungen).
+    res.status(status).json({ list: publicListFor(result.list, actor), ...(extra ? extra(result.value) : {}) });
   } catch (err: any) {
     console.error(`[Maintenance] Mutation on ${code} failed:`, err);
     res.status(500).json({ error: 'Speichern fehlgeschlagen.', details: err.message });
@@ -1215,7 +1220,7 @@ app.get('/api/maintenance/:code', (req: Request, res: Response) => {
     if (String(req.query.version ?? '') === String(list.version) && String(req.query.modified ?? '') === list.lastModified) {
       return res.json({ unchanged: true, version: list.version });
     }
-    res.json({ list });
+    res.json({ list: publicListFor(list, actor) });
   } catch (err: any) {
     res.status(500).json({ error: 'Liste konnte nicht gelesen werden.', details: err.message });
   }
@@ -1261,6 +1266,21 @@ app.post('/api/maintenance/:code/entries/:id/provisional', (req: Request, res: R
     200,
     (entry) => ({ entry })
   );
+});
+
+app.post('/api/maintenance/:code/entries/:id/assign', (req: Request, res: Response) => {
+  runMaintMutation(
+    req,
+    res,
+    (list, actor, now) => setEntryAssignee(list, actor, String(req.params.id), req.body?.assignee, req.body?.baseRev, now),
+    200,
+    (entry) => ({ entry })
+  );
+});
+
+// Persönlicher Gelesen-Marker des angemeldeten Kürzels
+app.post('/api/maintenance/:code/seen', (req: Request, res: Response) => {
+  runMaintMutation(req, res, (list, actor, now) => markSeen(list, actor, req.body?.upTo, now));
 });
 
 app.delete('/api/maintenance/:code/entries/:id', (req: Request, res: Response) => {

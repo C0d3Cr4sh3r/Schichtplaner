@@ -56,6 +56,13 @@ export interface MaintenanceUser {
   name: string;
   role: MaintenanceRole;
   active: boolean;
+  /** Für welche Standorte diese Person Hinweise zu neuen/dringenden Meldungen bekommt. Leer/fehlend = keine. */
+  notifyLocations?: string[];
+  /**
+   * Persönlicher Gelesen-Marker: Hinweise mit Zeitstempel bis hierher gelten für DIESE Person als gesehen.
+   * Wird vom Server nur an die Person selbst ausgeliefert (siehe publicListFor), nie an andere.
+   */
+  seenAt?: string;
 }
 
 export interface MaintenanceEntry {
@@ -82,6 +89,10 @@ export interface MaintenanceEntry {
   provisionalAt?: string;
   provisionalNote?: string; // Pflicht: was wurde gemacht / was ist noch zu tun
   provisionalDue?: string; // optionale Wiedervorlage "Nachbearbeiten bis" (YYYY-MM-DD)
+  // Zuweisung durch die Instandhaltung an eine Person (Kürzel)
+  assignedTo?: string;
+  assignedBy?: string;
+  assignedAt?: string;
 }
 
 /** Gültiges Kalenderdatum im Format YYYY-MM-DD? */
@@ -527,6 +538,13 @@ export function addUser(
     role: src.role as MaintenanceRole,
     active: true,
   };
+  if (src.notifyLocations !== undefined) {
+    const nl = parseNotifyLocations(list, src.notifyLocations);
+    if (!nl.ok) return nl;
+    user.notifyLocations = nl.value;
+  }
+  // Neuer Marker: ab jetzt gilt als neu, nicht der gesamte Altbestand.
+  user.seenAt = now;
   return { ok: true, list: touch(list, now, { users: [...list.users, user] }), value: user };
 }
 
@@ -553,6 +571,13 @@ export function updateUser(
   if (src.active !== undefined) {
     if (typeof src.active !== 'boolean') return fail(400, 'Ungültiger Status.');
     updated.active = src.active;
+  }
+  if (src.notifyLocations !== undefined) {
+    const nl = parseNotifyLocations(list, src.notifyLocations);
+    if (!nl.ok) return nl;
+    updated.notifyLocations = nl.value;
+    // Hinweise erst ab jetzt - sonst wäre der gesamte Altbestand "neu".
+    if (nl.value.length > 0 && !updated.seenAt) updated.seenAt = now;
   }
   const users = list.users.map((u) => (u.kuerzel === kuerzel ? updated : u));
   const guard = guardLastManager(list.users, users);
@@ -623,6 +648,161 @@ export function updateSettings(
       return fail(409, `Standort „${removedInUse[0]}“ wird noch von Einträgen verwendet und kann nicht entfernt werden.`);
     }
     patch.locations = locs.value;
+    // Entfernte Standorte auch aus den Hinweis-Einstellungen der Kürzel streichen.
+    patch.users = list.users.map((u) =>
+      u.notifyLocations && u.notifyLocations.some((l) => !locs.value.includes(l))
+        ? { ...u, notifyLocations: u.notifyLocations.filter((l) => locs.value.includes(l)) }
+        : u
+    );
   }
   return { ok: true, list: touch(list, now, patch), value: undefined };
+}
+
+// ---------------------------------------------------------------------------
+// Standorte für Hinweise
+// ---------------------------------------------------------------------------
+
+function parseNotifyLocations(list: MaintenanceList, raw: unknown): { ok: true; value: string[] } | LogicFailure {
+  if (!Array.isArray(raw)) return fail(400, 'Standorte für Hinweise müssen als Liste angegeben werden.');
+  const out: string[] = [];
+  for (const item of raw) {
+    const v = cleanText(item, MAX_LOCATION_LEN);
+    if (!v) continue;
+    if (!list.locations.includes(v)) return fail(400, `Unbekannter Standort „${v}“.`);
+    if (!out.includes(v)) out.push(v);
+  }
+  return { ok: true, value: out };
+}
+
+// ---------------------------------------------------------------------------
+// Zuweisung
+// ---------------------------------------------------------------------------
+
+/** Meldung einer Person aus der Instandhaltung zuweisen (oder die Zuweisung aufheben, assignee leer). Nur Instandhaltung. */
+export function setEntryAssignee(
+  list: MaintenanceList,
+  actor: Actor,
+  id: string,
+  assignee: unknown,
+  baseRev: unknown,
+  now: string
+): LogicResult<MaintenanceEntry> {
+  const prep = prepareEntryChange(list, actor, id, baseRev);
+  if ('ok' in prep) return prep;
+  const { user, entry } = prep;
+  if (user.role !== 'instandhaltung') return fail(403, 'Nur die Instandhaltung kann Meldungen zuweisen.');
+  if (entry.done) return fail(400, 'Erledigte Meldungen lassen sich nicht zuweisen. Zuerst wieder öffnen.');
+
+  const target = assignee === undefined || assignee === null || assignee === '' ? '' : normalizeKuerzel(assignee);
+  if (target === (entry.assignedTo ?? '')) return { ok: true, list, value: entry }; // nichts zu tun
+
+  let updated: MaintenanceEntry;
+  if (!target) {
+    const { assignedTo: _a, assignedBy: _b, assignedAt: _c, ...rest } = entry;
+    updated = { ...rest, rev: entry.rev + 1, updatedBy: user.kuerzel, updatedAt: now };
+  } else {
+    const person = findActiveUser(list, target);
+    if (!person || person.role !== 'instandhaltung') {
+      return fail(400, 'Zuweisen kann man nur an ein aktives Kürzel mit der Rolle „Instandhaltung“.');
+    }
+    updated = {
+      ...entry,
+      assignedTo: person.kuerzel,
+      assignedBy: user.kuerzel,
+      assignedAt: now,
+      rev: entry.rev + 1,
+      updatedBy: user.kuerzel,
+      updatedAt: now,
+    };
+  }
+  return {
+    ok: true,
+    list: touch(list, now, { entries: list.entries.map((e) => (e.id === id ? updated : e)) }),
+    value: updated,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Hinweise (persönlich, aus den Daten abgeleitet)
+// ---------------------------------------------------------------------------
+
+export type NoticeKind = 'assigned' | 'sofort' | 'neu' | 'fortschritt';
+
+export interface MaintenanceNotice {
+  entry: MaintenanceEntry;
+  kind: NoticeKind;
+  /** Zeitpunkt des Ereignisses (ISO). */
+  at: string;
+  /** Auffällig darstellen (Banner): Zuweisung an mich oder Sofort-Meldung an meinem Standort. */
+  urgent: boolean;
+}
+
+/**
+ * Berechnet die für EINE Person ungelesenen Hinweise. Es gibt keinen gemeinsamen Posteingang: Ob etwas "neu"
+ * ist, entscheidet allein der persönliche Marker (seenAt) dieser Person - dass jemand anderes etwas gelesen
+ * hat, ändert für sie nichts. Pro Meldung höchstens ein Hinweis (wichtigster Grund zuerst):
+ *  1. Mir zugewiesen (von jemand anderem)
+ *  2. Sofort-Meldung an einem meiner Hinweis-Standorte
+ *  3. Neue Meldung an einem meiner Hinweis-Standorte
+ *  4. Fortschritt an MEINER Meldung (provisorisch behoben / erledigt, von jemand anderem)
+ * Eigene Aktionen lösen nie einen Hinweis aus. Ohne Marker gibt es keine Hinweise (kein Altbestands-Flut).
+ */
+export function computeNotices(list: MaintenanceList, kuerzel: string): MaintenanceNotice[] {
+  const me = list.users.find((u) => u.kuerzel === kuerzel && u.active);
+  if (!me || !me.seenAt) return [];
+  const marker = me.seenAt;
+  const places = me.notifyLocations ?? [];
+  const out: MaintenanceNotice[] = [];
+
+  for (const e of list.entries) {
+    if (!e.done && e.assignedTo === kuerzel && e.assignedBy !== kuerzel && e.assignedAt && e.assignedAt > marker) {
+      out.push({ entry: e, kind: 'assigned', at: e.assignedAt, urgent: true });
+      continue;
+    }
+    const inMyPlace = places.includes(e.location);
+    if (inMyPlace && !e.done && e.urgency === 'sofort' && e.updatedBy !== kuerzel && e.updatedAt > marker) {
+      out.push({ entry: e, kind: 'sofort', at: e.updatedAt, urgent: true });
+      continue;
+    }
+    if (inMyPlace && e.createdBy !== kuerzel && e.createdAt > marker) {
+      out.push({ entry: e, kind: 'neu', at: e.createdAt, urgent: false });
+      continue;
+    }
+    if (e.createdBy === kuerzel) {
+      if (e.done && e.doneBy !== kuerzel && e.doneAt && e.doneAt > marker) {
+        out.push({ entry: e, kind: 'fortschritt', at: e.doneAt, urgent: false });
+      } else if (!e.done && e.provisional && e.provisionalBy !== kuerzel && e.provisionalAt && e.provisionalAt > marker) {
+        out.push({ entry: e, kind: 'fortschritt', at: e.provisionalAt, urgent: false });
+      }
+    }
+  }
+  // Dringendes zuerst, dann neueste zuerst
+  return out.sort((a, b) => (a.urgent !== b.urgent ? (a.urgent ? -1 : 1) : b.at.localeCompare(a.at)));
+}
+
+/** Setzt den persönlichen Gelesen-Marker des angemeldeten Kürzels. Marker geht nie zurück und nie in die Zukunft. */
+export function markSeen(list: MaintenanceList, actor: Actor, upTo: unknown, now: string): LogicResult<undefined> {
+  const user = resolveUser(list, actor);
+  if (isFailure(user)) return user;
+  if (typeof upTo !== 'string' || isNaN(Date.parse(upTo))) return fail(400, 'Ungültiger Zeitpunkt.');
+  const target = new Date(Math.min(Date.parse(upTo), Date.parse(now))).toISOString();
+  if (user.seenAt && user.seenAt >= target) return { ok: true, list, value: undefined };
+  const users = list.users.map((u) => (u.kuerzel === user.kuerzel ? { ...u, seenAt: target } : u));
+  return { ok: true, list: touch(list, now, { users }), value: undefined };
+}
+
+/**
+ * Liste für die Auslieferung an einen Client: Gelesen-Marker anderer Personen werden entfernt. Es gibt bewusst keine
+ * sichtbaren Lesebestätigungen - jede Person erfährt nur ihren eigenen Marker.
+ */
+export function publicListFor(list: MaintenanceList, actor: Actor): MaintenanceList {
+  const own = actor.type === 'user' ? normalizeKuerzel(actor.kuerzel) : null;
+  return {
+    ...list,
+    users: list.users.map((u) => {
+      if (u.kuerzel === own) return u;
+      const { seenAt: _s, ...rest } = u;
+      return rest;
+    }),
+  };
 }
