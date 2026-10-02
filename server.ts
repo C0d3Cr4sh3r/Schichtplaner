@@ -17,6 +17,7 @@ import {
   normalizeListCode,
   removeUser,
   setEntryDone,
+  setEntryProvisional,
   updateEntry,
   updateSettings,
   updateUser,
@@ -1246,6 +1247,17 @@ app.post('/api/maintenance/:code/entries/:id/done', (req: Request, res: Response
     res,
     (list, actor, now) =>
       setEntryDone(list, actor, String(req.params.id), req.body?.done, req.body?.note, req.body?.baseRev, now),
+    200,
+    (entry) => ({ entry })
+  );
+});
+
+app.post('/api/maintenance/:code/entries/:id/provisional', (req: Request, res: Response) => {
+  runMaintMutation(
+    req,
+    res,
+    (list, actor, now) =>
+      setEntryProvisional(list, actor, String(req.params.id), req.body?.provisional, req.body?.note, req.body?.baseRev, now),
     200,
     (entry) => ({ entry })
   );

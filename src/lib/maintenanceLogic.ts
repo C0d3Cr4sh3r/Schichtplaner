@@ -76,6 +76,11 @@ export interface MaintenanceEntry {
   doneBy?: string;
   doneAt?: string;
   doneNote?: string;
+  // Provisorisch behoben: läuft wieder, die endgültige Reparatur steht noch aus. Gilt weiterhin als NICHT erledigt.
+  provisional?: boolean;
+  provisionalBy?: string;
+  provisionalAt?: string;
+  provisionalNote?: string; // Pflicht: was wurde gemacht / was ist noch zu tun
 }
 
 export interface MaintenanceList {
@@ -380,8 +385,10 @@ export function setEntryDone(
 
   let updated: MaintenanceEntry;
   if (done) {
+    // Endgültig erledigt: der Provisorium-Vermerk ist damit hinfällig.
+    const { provisional: _p1, provisionalBy: _p2, provisionalAt: _p3, provisionalNote: _p4, ...base } = entry;
     updated = {
-      ...entry,
+      ...base,
       done: true,
       doneBy: user.kuerzel,
       doneAt: now,
@@ -393,6 +400,51 @@ export function setEntryDone(
   } else {
     const { doneBy: _a, doneAt: _b, doneNote: _c, ...rest } = entry;
     updated = { ...rest, done: false, rev: entry.rev + 1, updatedBy: user.kuerzel, updatedAt: now };
+  }
+  return {
+    ok: true,
+    list: touch(list, now, { entries: list.entries.map((e) => (e.id === id ? updated : e)) }),
+    value: updated,
+  };
+}
+
+/**
+ * "Provisorisch behoben" setzen bzw. zurücknehmen - nur Instandhaltung, nur bei noch nicht erledigten
+ * Einträgen. Der Eintrag bleibt offen (done=false); die Notiz ist Pflicht, damit klar bleibt, was noch zu tun ist.
+ */
+export function setEntryProvisional(
+  list: MaintenanceList,
+  actor: Actor,
+  id: string,
+  provisional: unknown,
+  note: unknown,
+  baseRev: unknown,
+  now: string
+): LogicResult<MaintenanceEntry> {
+  const prep = prepareEntryChange(list, actor, id, baseRev);
+  if ('ok' in prep) return prep;
+  const { user, entry } = prep;
+  if (user.role !== 'instandhaltung') return fail(403, 'Nur die Instandhaltung kann den Status „Provisorisch“ setzen.');
+  if (typeof provisional !== 'boolean') return fail(400, 'Ungültiger Status.');
+  if (entry.done) return fail(400, 'Dieser Eintrag ist bereits erledigt. Zum Ändern zuerst wieder öffnen.');
+
+  let updated: MaintenanceEntry;
+  if (provisional) {
+    const text = cleanText(note, MAX_NOTE_LEN);
+    if (!text) return fail(400, 'Bitte angeben, was provisorisch gemacht wurde und was noch zu tun ist.');
+    updated = {
+      ...entry,
+      provisional: true,
+      provisionalBy: user.kuerzel,
+      provisionalAt: now,
+      provisionalNote: text,
+      rev: entry.rev + 1,
+      updatedBy: user.kuerzel,
+      updatedAt: now,
+    };
+  } else {
+    const { provisional: _p1, provisionalBy: _p2, provisionalAt: _p3, provisionalNote: _p4, ...rest } = entry;
+    updated = { ...rest, rev: entry.rev + 1, updatedBy: user.kuerzel, updatedAt: now };
   }
   return {
     ok: true,

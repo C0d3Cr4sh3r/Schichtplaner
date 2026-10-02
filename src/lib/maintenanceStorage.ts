@@ -24,6 +24,7 @@ import {
   normalizeListCode,
   removeUser,
   setEntryDone,
+  setEntryProvisional,
   updateEntry,
   updateSettings,
   updateUser,
@@ -376,6 +377,10 @@ export function maintUpdateEntryAsync(auth: MaintAuth, id: string, baseRev: numb
 
 export function maintSetDoneAsync(auth: MaintAuth, id: string, baseRev: number, done: boolean, note: string) {
   return mutate(auth, 'POST', `${entryUrl(auth, id)}/done`, { baseRev, done, note }, (l, a, now) => setEntryDone(l, a, id, done, note, baseRev, now), (v) => v as MaintenanceEntry);
+}
+
+export function maintSetProvisionalAsync(auth: MaintAuth, id: string, baseRev: number, provisional: boolean, note: string) {
+  return mutate(auth, 'POST', `${entryUrl(auth, id)}/provisional`, { baseRev, provisional, note }, (l, a, now) => setEntryProvisional(l, a, id, provisional, note, baseRev, now), (v) => v as MaintenanceEntry);
 }
 
 export function maintDeleteEntryAsync(auth: MaintAuth, id: string, baseRev: number) {

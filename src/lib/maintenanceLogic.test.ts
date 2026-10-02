@@ -4,6 +4,7 @@ import {
   createEntry,
   updateEntry,
   setEntryDone,
+  setEntryProvisional,
   deleteEntry,
   addUser,
   updateUser,
@@ -384,5 +385,73 @@ describe('Einstellungen', () => {
     const m = updateSettings(list, user('MA1'), { listName: 'x' }, LATER);
     expect(m.ok).toBe(false);
     if (!m.ok) expect(m.status).toBe(403);
+  });
+});
+
+describe('setEntryProvisional (provisorisch behoben)', () => {
+  it('nur Instandhaltung; Notiz Pflicht; Eintrag bleibt offen', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const denied = setEntryProvisional(list, user('MA1'), entry.id, true, 'Schelle', entry.rev, LATER);
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.status).toBe(403);
+
+    const noNote = setEntryProvisional(list, user('IH1'), entry.id, true, '   ', entry.rev, LATER);
+    expect(noNote.ok).toBe(false);
+    if (!noNote.ok) expect(noNote.status).toBe(400);
+
+    const ok = setEntryProvisional(list, user('IH1'), entry.id, true, ' Schlauch abgedichtet, Tausch folgt ', entry.rev, LATER);
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) return;
+    expect(ok.value.provisional).toBe(true);
+    expect(ok.value.done).toBe(false);
+    expect(ok.value.provisionalBy).toBe('IH1');
+    expect(ok.value.provisionalAt).toBe(LATER);
+    expect(ok.value.provisionalNote).toBe('Schlauch abgedichtet, Tausch folgt');
+    expect(ok.value.rev).toBe(2);
+  });
+  it('zurücknehmen entfernt den Vermerk', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const p = setEntryProvisional(list, user('IH1'), entry.id, true, 'x', entry.rev, LATER);
+    if (!p.ok) throw new Error('setup');
+    const back = setEntryProvisional(p.list, user('IH1'), entry.id, false, '', p.value.rev, LATER);
+    expect(back.ok).toBe(true);
+    if (!back.ok) return;
+    expect(back.value.provisional).toBeUndefined();
+    expect(back.value.provisionalNote).toBeUndefined();
+    expect(back.value.done).toBe(false);
+  });
+  it('endgültig erledigen entfernt den Provisorium-Vermerk', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const p = setEntryProvisional(list, user('IH1'), entry.id, true, 'x', entry.rev, LATER);
+    if (!p.ok) throw new Error('setup');
+    const d = setEntryDone(p.list, user('IH1'), entry.id, true, 'Schlauch getauscht', p.value.rev, LATER);
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    expect(d.value.done).toBe(true);
+    expect(d.value.provisional).toBeUndefined();
+    expect(d.value.provisionalBy).toBeUndefined();
+    expect(d.value.doneNote).toBe('Schlauch getauscht');
+  });
+  it('bei erledigtem Eintrag nicht möglich; Revisionskonflikt wird erkannt; ungültiger Wert', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const d = setEntryDone(list, user('IH1'), entry.id, true, '', entry.rev, LATER);
+    if (!d.ok) throw new Error('setup');
+    const onDone = setEntryProvisional(d.list, user('IH1'), entry.id, true, 'x', d.value.rev, LATER);
+    expect(onDone.ok).toBe(false);
+    if (!onDone.ok) expect(onDone.status).toBe(400);
+
+    const stale = setEntryProvisional(d.list, user('IH1'), entry.id, true, 'x', entry.rev, LATER);
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.status).toBe(409);
+
+    expect(setEntryProvisional(list, user('IH1'), entry.id, 'ja', 'x', entry.rev, LATER).ok).toBe(false);
+  });
+  it('zwei gleichzeitige Aktionen (provisorisch + erledigt) mit gleicher rev: genau eine gewinnt', () => {
+    const { list, entry } = withEntry(baseList(), 'MA1');
+    const a = setEntryProvisional(list, user('IH1'), entry.id, true, 'x', entry.rev, LATER);
+    if (!a.ok) throw new Error('setup');
+    const b = setEntryDone(a.list, user('IH1'), entry.id, true, '', entry.rev, LATER);
+    expect(b.ok).toBe(false);
+    if (!b.ok) expect(b.status).toBe(409);
   });
 });

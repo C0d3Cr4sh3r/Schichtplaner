@@ -844,6 +844,12 @@ export const UserManual: React.FC = () => {
                   bei Rückfragen nennen können. Offene Meldungen stehen oben, sortiert nach Dringlichkeit.
                 </p>
                 <p>
+                  Läuft die Maschine wieder, muss aber noch richtig repariert werden (z. B. Schlauch nur abgedichtet), setzt die Instandhaltung die
+                  Meldung auf <strong>„Provisorisch“</strong> und trägt ein, was gemacht wurde und was noch zu tun ist (Pflichtfeld). Die Meldung
+                  bleibt in der Liste (violett markiert, Filter „Nur provisorisch behoben“), bis sie mit <strong>„Endgültig erledigt“</strong>
+                  abgeschlossen wird; mit „Zurück auf offen“ lässt sich der Vermerk wieder zurücknehmen.
+                </p>
+                <p>
                   Bitte in der Beschreibung nur technische Angaben machen — keine Angaben zur Gesundheit oder zum Verhalten von Personen.
                 </p>
               </div>

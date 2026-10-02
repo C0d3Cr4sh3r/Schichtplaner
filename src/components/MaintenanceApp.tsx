@@ -42,6 +42,7 @@ import {
   maintDeleteEntryAsync,
   maintFetchListAsync,
   maintSetDoneAsync,
+  maintSetProvisionalAsync,
   maintUpdateEntryAsync,
   saveMaintSession,
 } from '../lib/maintenanceStorage';
@@ -69,6 +70,7 @@ function formatDateTime(iso?: string): string {
 function sortEntries(entries: MaintenanceEntry[]): MaintenanceEntry[] {
   return [...entries].sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1; // offene zuerst
+    if (!a.done && !!a.provisional !== !!b.provisional) return a.provisional ? 1 : -1; // provisorisch nach den echt offenen
     if (!a.done) {
       const byUrgency = URGENCY_RANK[b.urgency] - URGENCY_RANK[a.urgency];
       if (byUrgency !== 0) return byUrgency;
@@ -92,14 +94,14 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
   const [tab, setTab] = useState<'liste' | 'verwaltung'>('liste');
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<'offen' | 'erledigt' | 'alle'>('offen');
+  const [statusFilter, setStatusFilter] = useState<'offen' | 'provisorisch' | 'erledigt' | 'alle'>('offen');
   const [locationFilter, setLocationFilter] = useState('');
   const [disciplineFilter, setDisciplineFilter] = useState<'' | Discipline>('');
   const [urgencyFilter, setUrgencyFilter] = useState<'' | Urgency>('');
   const [search, setSearch] = useState('');
 
   const [formState, setFormState] = useState<{ mode: 'create' } | { mode: 'edit'; entry: MaintenanceEntry } | null>(null);
-  const [doneTarget, setDoneTarget] = useState<MaintenanceEntry | null>(null);
+  const [doneTarget, setDoneTarget] = useState<{ entry: MaintenanceEntry; mode: 'done' | 'provisional' } | null>(null);
 
   const auth: MaintAuth = useMemo(() => ({ listCode: session.listCode, kuerzel: session.kuerzel }), [session.listCode, session.kuerzel]);
 
@@ -198,7 +200,8 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
     const q = search.trim().toLowerCase();
     return sortEntries(
       list.entries.filter((e) => {
-        if (statusFilter === 'offen' && e.done) return false;
+        if (statusFilter === 'offen' && e.done) return false; // "Offen" enthält auch provisorisch behobene
+        if (statusFilter === 'provisorisch' && (e.done || !e.provisional)) return false;
         if (statusFilter === 'erledigt' && !e.done) return false;
         if (locationFilter && e.location !== locationFilter) return false;
         if (disciplineFilter && e.discipline !== disciplineFilter) return false;
@@ -215,7 +218,8 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
   const stats = useMemo(() => {
     const entries = list?.entries ?? [];
     return {
-      open: entries.filter((e) => !e.done).length,
+      open: entries.filter((e) => !e.done && !e.provisional).length,
+      provisional: entries.filter((e) => !e.done && e.provisional).length,
       urgent: entries.filter((e) => !e.done && e.urgency === 'sofort').length,
       done: entries.filter((e) => e.done).length,
     };
@@ -347,6 +351,11 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                     {stats.urgent} sofort
                   </span>
                 )}
+                {stats.provisional > 0 && (
+                  <span className="text-violet-700 font-medium" title="Läuft wieder, endgültige Reparatur steht noch aus">
+                    {stats.provisional} provisorisch
+                  </span>
+                )}
                 <span className="text-slate-500">{stats.done} erledigt</span>
               </div>
               <button
@@ -373,7 +382,8 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                 />
               </div>
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Status" className={selectClass}>
-                <option value="offen">Offen</option>
+                <option value="offen">Offen (inkl. provisorisch)</option>
+                <option value="provisorisch">Nur provisorisch behoben</option>
                 <option value="erledigt">Erledigt</option>
                 <option value="alle">Alle</option>
               </select>
@@ -415,7 +425,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                   const mayModify = canModifyEntry({ kuerzel: session.kuerzel, role }, entry);
                   return (
                     <li key={entry.id} className={`flex bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs ${entry.done ? 'opacity-80' : ''}`} data-entry-number={entry.number}>
-                      <div className={`w-1.5 shrink-0 ${entry.done ? 'bg-emerald-400' : style.bar}`} aria-hidden />
+                      <div className={`w-1.5 shrink-0 ${entry.done ? 'bg-emerald-400' : entry.provisional ? 'bg-violet-500' : style.bar}`} aria-hidden />
                       <div className="flex-1 p-4 min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                           <span className="font-mono text-xs text-slate-500">#{entry.number}</span>
@@ -433,6 +443,11 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                               <Check className="w-3 h-3" />
                               Erledigt
                             </span>
+                          ) : entry.provisional ? (
+                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-violet-400 bg-violet-50 text-violet-800 font-medium">
+                              <Wrench className="w-3 h-3" />
+                              Provisorisch behoben – Nachbearbeitung nötig
+                            </span>
                           ) : (
                             <span className="text-xs px-2 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600">Offen</span>
                           )}
@@ -443,6 +458,12 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                             Gemeldet von <strong className="font-mono text-slate-700">{entry.createdBy}</strong> am {formatDateTime(entry.createdAt)}
                             {entry.rev > 1 && !entry.done && <span> · zuletzt geändert von {entry.updatedBy} am {formatDateTime(entry.updatedAt)}</span>}
                           </div>
+                          {!entry.done && entry.provisional && (
+                            <div className="text-violet-900 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1">
+                              Provisorisch behoben von <strong className="font-mono">{entry.provisionalBy}</strong> am {formatDateTime(entry.provisionalAt)}
+                              {entry.provisionalNote && <span> – „{entry.provisionalNote}“</span>}
+                            </div>
+                          )}
                           {entry.done && (
                             <div className="text-emerald-800">
                               Erledigt von <strong className="font-mono">{entry.doneBy}</strong> am {formatDateTime(entry.doneAt)}
@@ -463,14 +484,36 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                               Wieder öffnen
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => setDoneTarget(entry)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              Erledigt
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setDoneTarget({ entry, mode: 'done' })}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                {entry.provisional ? 'Endgültig erledigt' : 'Erledigt'}
+                              </button>
+                              {entry.provisional ? (
+                                <button
+                                  type="button"
+                                  onClick={() => act(() => maintSetProvisionalAsync(auth, entry.id, entry.rev, false, ''), `#${entry.number} wieder auf „offen“ gesetzt.`)}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-medium cursor-pointer"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  Zurück auf offen
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setDoneTarget({ entry, mode: 'provisional' })}
+                                  title="Läuft wieder, muss aber noch richtig repariert werden"
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-violet-400 text-violet-800 bg-violet-50 hover:bg-violet-100 text-xs font-medium cursor-pointer"
+                                >
+                                  <Wrench className="w-3.5 h-3.5" />
+                                  Provisorisch
+                                </button>
+                              )}
+                            </>
                           ))}
                         {mayModify && (
                           <div className="flex gap-1">
@@ -518,10 +561,15 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
 
       {doneTarget && (
         <DoneDialog
-          entry={doneTarget}
+          entry={doneTarget.entry}
+          mode={doneTarget.mode}
           onClose={() => setDoneTarget(null)}
           onConfirm={async (note) => {
-            const res = await act(() => maintSetDoneAsync(auth, doneTarget.id, doneTarget.rev, true, note), `#${doneTarget.number} als erledigt gemeldet.`);
+            const { entry, mode } = doneTarget;
+            const res =
+              mode === 'done'
+                ? await act(() => maintSetDoneAsync(auth, entry.id, entry.rev, true, note), `#${entry.number} als erledigt gemeldet.`)
+                : await act(() => maintSetProvisionalAsync(auth, entry.id, entry.rev, true, note), `#${entry.number} als provisorisch behoben vermerkt - bleibt in der Liste.`);
             setDoneTarget(null);
             return res.ok;
           }}
@@ -751,11 +799,13 @@ const EntryFormModal: React.FC<EntryFormModalProps> = ({ list, session, state, o
 
 interface DoneDialogProps {
   entry: MaintenanceEntry;
+  mode: 'done' | 'provisional';
   onClose: () => void;
   onConfirm: (note: string) => Promise<boolean>;
 }
 
-const DoneDialog: React.FC<DoneDialogProps> = ({ entry, onClose, onConfirm }) => {
+const DoneDialog: React.FC<DoneDialogProps> = ({ entry, mode, onClose, onConfirm }) => {
+  const provisional = mode === 'provisional';
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -768,7 +818,7 @@ const DoneDialog: React.FC<DoneDialogProps> = ({ entry, onClose, onConfirm }) =>
   }, [onClose, saving]);
 
   return (
-    <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-label={`Meldung ${entry.number} erledigt melden`}>
+    <div className="fixed inset-0 z-40 bg-slate-900/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-label={provisional ? `Meldung ${entry.number} provisorisch behoben` : `Meldung ${entry.number} erledigt melden`}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -778,22 +828,28 @@ const DoneDialog: React.FC<DoneDialogProps> = ({ entry, onClose, onConfirm }) =>
         }}
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4"
       >
-        <h2 className="text-lg font-bold">Als erledigt melden</h2>
+        <h2 className="text-lg font-bold">{provisional ? 'Provisorisch behoben' : 'Als erledigt melden'}</h2>
+        {provisional && (
+          <p className="text-xs text-violet-900 bg-violet-50 border border-violet-200 rounded-lg p-2">
+            Die Maschine läuft wieder, muss aber noch richtig repariert werden. Der Eintrag bleibt in der Liste, bis er endgültig erledigt wird.
+          </p>
+        )}
         <p className="text-sm text-slate-600">
           <span className="font-mono">#{entry.number}</span> · <strong>{entry.machine}</strong> ({entry.location} · {entry.area})
         </p>
         <div>
           <label htmlFor="done-note" className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">
-            Was wurde gemacht? (optional)
+            {provisional ? 'Was wurde provisorisch gemacht – und was ist noch zu tun?' : 'Was wurde gemacht? (optional)'}
           </label>
           <textarea
             id="done-note"
+            required={provisional}
             rows={3}
             maxLength={1000}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             autoFocus
-            placeholder="z. B. Dichtung getauscht, Pumpe geprüft"
+            placeholder={provisional ? 'z. B. Mit Schlauchschelle abgedichtet; Schlauch muss bei nächstem Stillstand getauscht werden' : 'z. B. Dichtung getauscht, Pumpe geprüft'}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
           />
         </div>
@@ -801,8 +857,8 @@ const DoneDialog: React.FC<DoneDialogProps> = ({ entry, onClose, onConfirm }) =>
           <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-50 cursor-pointer">
             Abbrechen
           </button>
-          <button type="submit" disabled={saving} className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold cursor-pointer">
-            {saving ? 'Speichert…' : 'Erledigt melden'}
+          <button type="submit" disabled={saving} className={`px-5 py-2 rounded-lg disabled:opacity-50 text-white text-sm font-semibold cursor-pointer ${provisional ? 'bg-violet-600 hover:bg-violet-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+            {saving ? 'Speichert…' : provisional ? 'Provisorisch vermerken' : 'Erledigt melden'}
           </button>
         </div>
       </form>
