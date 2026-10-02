@@ -89,6 +89,10 @@ export interface MaintenanceEntry {
   provisionalAt?: string;
   provisionalNote?: string; // Pflicht: was wurde gemacht / was ist noch zu tun
   provisionalDue?: string; // optionale Wiedervorlage "Nachbearbeiten bis" (YYYY-MM-DD)
+  // Wann/von wem die Meldung auf "sofort" gesetzt wurde (beim Anlegen oder durch Hochstufen). Nur dieses Ereignis löst
+  // den Sofort-Hinweis aus - nicht jede spätere Änderung an der Meldung.
+  urgentAt?: string;
+  urgentBy?: string;
   // Zuweisung durch die Instandhaltung an eine Person (Kürzel)
   assignedTo?: string;
   assignedBy?: string;
@@ -331,6 +335,7 @@ export function createEntry(
     updatedBy: user.kuerzel,
     updatedAt: now,
     done: false,
+    ...(f.urgency === 'sofort' ? { urgentAt: now, urgentBy: user.kuerzel } : {}),
   };
   return {
     ok: true,
@@ -384,6 +389,11 @@ export function updateEntry(
     updatedBy: user.kuerzel,
     updatedAt: now,
   };
+  // Neu auf "sofort" hochgestuft: das ist das Ereignis, das den Hinweis auslöst.
+  if (parsed.fields.urgency === 'sofort' && entry.urgency !== 'sofort') {
+    updated.urgentAt = now;
+    updated.urgentBy = user.kuerzel;
+  }
   return {
     ok: true,
     list: touch(list, now, { entries: list.entries.map((e) => (e.id === id ? updated : e)) }),
@@ -462,8 +472,10 @@ export function setEntryProvisional(
     updated = {
       ...entry,
       provisional: true,
-      provisionalBy: user.kuerzel,
-      provisionalAt: now,
+      // Wird ein bestehendes Provisorium nur angepasst (Notiz/Frist), bleiben Zeitpunkt und Person des ersten Vermerks
+      // erhalten - sonst bekäme der Melder bei jeder Anpassung erneut einen Hinweis.
+      provisionalBy: entry.provisional && entry.provisionalBy ? entry.provisionalBy : user.kuerzel,
+      provisionalAt: entry.provisional && entry.provisionalAt ? entry.provisionalAt : now,
       provisionalNote: text,
       provisionalDue: dueStr,
       rev: entry.rev + 1,
@@ -760,8 +772,12 @@ export function computeNotices(list: MaintenanceList, kuerzel: string): Maintena
       continue;
     }
     const inMyPlace = places.includes(e.location);
-    if (inMyPlace && !e.done && e.urgency === 'sofort' && e.updatedBy !== kuerzel && e.updatedAt > marker) {
-      out.push({ entry: e, kind: 'sofort', at: e.updatedAt, urgent: true });
+    // Sofort-Hinweis nur für das Ereignis "wurde sofort" (Anlegen / Hochstufen) - NICHT für spätere Änderungen an
+    // derselben Meldung (zuweisen, provisorisch, ...). Ältere Einträge ohne urgentAt: Anlegen gilt als Ereignis.
+    const urgentAt = e.urgentAt ?? e.createdAt;
+    const urgentBy = e.urgentBy ?? e.createdBy;
+    if (inMyPlace && !e.done && e.urgency === 'sofort' && urgentBy !== kuerzel && urgentAt > marker) {
+      out.push({ entry: e, kind: 'sofort', at: urgentAt, urgent: true });
       continue;
     }
     if (inMyPlace && e.createdBy !== kuerzel && e.createdAt > marker) {

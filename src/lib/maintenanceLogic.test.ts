@@ -705,3 +705,148 @@ describe('markSeen und publicListFor', () => {
     expect(list.users.every((u) => u.seenAt)).toBe(true);
   });
 });
+
+describe('Hinweise: keine Wiederholung bei späteren Änderungen (Regression)', () => {
+  const T0 = '2026-10-02T08:00:00.000Z';
+  const T1 = '2026-10-02T09:00:00.000Z';
+  const T2 = '2026-10-02T09:10:00.000Z';
+  const T3 = '2026-10-02T09:20:00.000Z';
+  function setup() {
+    let list = baseList();
+    const t = addUser(list, admin, { kuerzel: 'ih2', role: 'instandhaltung' }, T0);
+    if (!t.ok) throw new Error('setup');
+    const u = updateUser(t.list, admin, 'MA1', { notifyLocations: ['Werk Nord'] }, T0);
+    if (!u.ok) throw new Error('setup');
+    list = { ...u.list, users: u.list.users.map((x) => ({ ...x, seenAt: T0 })) };
+    return list;
+  }
+  it('Sofort-Hinweis kommt EINMAL; Zuweisen/Provisorisch/Frist-Ändern durch andere löst ihn nicht erneut aus', () => {
+    // IH1 legt eine Sofort-Meldung an; MA1 (Hinweise für Werk Nord) bekommt den Hinweis
+    const c = createEntry(setup(), user('IH1'), { ...validEntry, urgency: 'sofort' }, T1, newId);
+    if (!c.ok) throw new Error('setup');
+    expect(computeNotices(c.list, 'MA1').map((n) => n.kind)).toEqual(['sofort']);
+
+    // MA1 liest
+    const seen = markSeen(c.list, user('MA1'), T1, T1);
+    if (!seen.ok) throw new Error('setup');
+    expect(computeNotices(seen.list, 'MA1')).toEqual([]);
+
+    // IH1 weist zu, setzt provisorisch, ändert Frist/Notiz, bearbeitet Text -> für MA1 nichts Neues
+    const a = setEntryAssignee(seen.list, user('IH1'), c.value.id, 'IH2', c.value.rev, T2);
+    if (!a.ok) throw new Error('setup');
+    const p = setEntryProvisional(a.list, user('IH1'), c.value.id, true, 'Notlösung', a.value.rev, T2, '2026-10-10');
+    if (!p.ok) throw new Error('setup');
+    const p2 = setEntryProvisional(p.list, user('IH1'), c.value.id, true, 'Notlösung 2', p.value.rev, T3, '2026-10-20');
+    if (!p2.ok) throw new Error('setup');
+    const e = updateEntry(p2.list, user('IH1'), c.value.id, { description: 'präzisiert' }, p2.value.rev, T3);
+    if (!e.ok) throw new Error('setup');
+    expect(computeNotices(e.list, 'MA1')).toEqual([]);
+  });
+  it('Hochstufen auf "sofort" durch andere löst den Hinweis aus, eigenes Hochstufen nicht', () => {
+    const c = createEntry(setup(), user('IH1'), { ...validEntry, urgency: 'normal' }, T1, newId);
+    if (!c.ok) throw new Error('setup');
+    const seen = markSeen(c.list, user('MA1'), T1, T1);
+    if (!seen.ok) throw new Error('setup');
+    expect(computeNotices(seen.list, 'MA1')).toEqual([]);
+    const up = updateEntry(seen.list, user('IH1'), c.value.id, { urgency: 'sofort' }, c.value.rev, T2);
+    if (!up.ok) throw new Error('setup');
+    expect(up.value.urgentAt).toBe(T2);
+    expect(up.value.urgentBy).toBe('IH1');
+    expect(computeNotices(up.list, 'MA1').map((n) => n.kind)).toEqual(['sofort']);
+    expect(computeNotices(up.list, 'IH1')).toEqual([]); // eigene Aktion
+  });
+  it('Provisorium: erste Vermerk-Zeit bleibt beim Anpassen erhalten (kein neuer Hinweis für den Melder)', () => {
+    let list = setup();
+    const c = createEntry(list, user('MB2'), validEntry, T1, newId);
+    if (!c.ok) throw new Error('setup');
+    const p = setEntryProvisional(c.list, user('IH1'), c.value.id, true, 'a', c.value.rev, T2);
+    if (!p.ok) throw new Error('setup');
+    const seen = markSeen(p.list, user('MB2'), T2, T3);
+    if (!seen.ok) throw new Error('setup');
+    const p2 = setEntryProvisional(seen.list, user('IH1'), c.value.id, true, 'b', p.value.rev, T3, '2026-10-30');
+    if (!p2.ok) throw new Error('setup');
+    expect(p2.value.provisionalAt).toBe(T2);
+    expect(computeNotices(p2.list, 'MB2')).toEqual([]);
+  });
+});
+
+describe('Hinweise: Zufallstest (Invarianten)', () => {
+  // Einfacher deterministischer Zufallsgenerator, damit Fehlschläge reproduzierbar sind
+  function rng(seed: number) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 0x100000000;
+    };
+  }
+  const key = (n: { entry: { id: string }; kind: string; at: string }) => `${n.entry.id}|${n.kind}|${n.at}`;
+
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    it(`Seed ${seed}: 250 zufällige Aktionen halten die Regeln ein`, () => {
+      const rand = rng(seed);
+      const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
+      let tick = 0;
+      const clock = () => new Date(Date.UTC(2026, 9, 2, 8, 0, 0) + ++tick * 1000).toISOString();
+
+      let list = baseList();
+      for (const k of ['ih2', 'ih3']) {
+        const r = addUser(list, admin, { kuerzel: k, role: 'instandhaltung' }, clock());
+        if (!r.ok) throw new Error('setup');
+        list = r.list;
+      }
+      for (const [k, locs] of [['IH1', ['Werk Nord', 'Werk Süd']], ['IH2', ['Werk Nord']], ['MA1', ['Werk Süd']]] as const) {
+        const r = updateUser(list, admin, k, { notifyLocations: [...locs] }, clock());
+        if (!r.ok) throw new Error('setup');
+        list = r.list;
+      }
+      const users = list.users.map((u) => u.kuerzel);
+      const ih = ['IH1', 'IH2', 'IH3'];
+
+      for (let step = 0; step < 250; step++) {
+        const who = pick(users);
+        const now = clock();
+        const before = new Set(computeNotices(list, who).map(key));
+        const entries = list.entries;
+        const e = entries.length ? pick(entries) : undefined;
+        const action = pick(['create', 'create', 'edit', 'assign', 'prov', 'unprov', 'done', 'reopen', 'seen', 'seen']);
+        let res: any = null;
+        if (action === 'create' || !e) {
+          res = createEntry(list, user(who), { ...validEntry, location: pick(['Werk Nord', 'Werk Süd']), urgency: pick(['niedrig', 'normal', 'hoch', 'sofort']) }, now, newId);
+        } else if (action === 'edit') {
+          res = updateEntry(list, user(who), e.id, { urgency: pick(['niedrig', 'normal', 'hoch', 'sofort']), description: 'x' + step }, e.rev, now);
+        } else if (action === 'assign') {
+          res = setEntryAssignee(list, user(who), e.id, pick([...ih, '']), e.rev, now);
+        } else if (action === 'prov') {
+          res = setEntryProvisional(list, user(who), e.id, true, 'n' + step, e.rev, now, pick(['', '2026-12-01']));
+        } else if (action === 'unprov') {
+          res = setEntryProvisional(list, user(who), e.id, false, '', e.rev, now);
+        } else if (action === 'done') {
+          res = setEntryDone(list, user(who), e.id, true, 'ok', e.rev, now);
+        } else if (action === 'reopen') {
+          res = setEntryDone(list, user(who), e.id, false, '', e.rev, now);
+        } else {
+          // Gelesen genau wie die Oberfläche: bis zum neuesten angezeigten Hinweis
+          const shown = computeNotices(list, who);
+          if (shown.length) {
+            const upTo = shown.reduce((m, n) => (n.at > m ? n.at : m), shown[0].at);
+            res = markSeen(list, user(who), upTo, now);
+            if (res.ok) {
+              // Invariante 1: nach "gelesen" gibt es nichts mehr, das vor oder bei diesem Zeitpunkt lag
+              const after = computeNotices(res.list, who);
+              expect(after.every((n) => n.at > upTo), `Seed ${seed} Schritt ${step}: nach Gelesen blieb Altes übrig`).toBe(true);
+            }
+          }
+        }
+        if (res && res.ok) {
+          list = res.list;
+          // Invariante 2: eigene Aktionen erzeugen für einen selbst nie einen neuen Hinweis
+          const after = computeNotices(list, who);
+          // Verglichen wird pro Meldung: Wechselt nur die Art des Hinweises (z. B. "sofort" -> "neu", weil die Meldung erledigt wurde), ist es derselbe ungelesene Vorgang.
+          const beforeEntries = new Set([...before].map((k) => k.split("|")[0]));
+          const created = after.filter((n) => !beforeEntries.has(n.entry.id));
+          expect(created, `Seed ${seed} Schritt ${step} (${action} durch ${who}): neuer Hinweis für den Akteur selbst`).toEqual([]);
+        }
+      }
+    });
+  }
+});
