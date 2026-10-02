@@ -657,6 +657,17 @@ app.put('/api/departments/:code', (req: Request, res: Response) => {
     return res.status(400).json({ error: `Invalid department payload for ${code}: machines, employees and absences must be arrays` });
   }
 
+  // Eine Abteilung NEU anzulegen (Datei existiert noch nicht) ist Admin-Sache. Ohne diese Prüfung
+  // könnte jeder im Netz per PUT beliebige Abteilungen erzeugen - und ein Client, der eine
+  // zwischenzeitlich gelöschte Abteilung noch offen hat, würde sie beim nächsten Speichern wiederbeleben.
+  if (!fs.existsSync(filePath)) {
+    const actor = getMaintActor(req, res);
+    if (!actor) return;
+    if (actor.type !== 'admin') {
+      return res.status(403).json({ error: `Abteilung ${code} gibt es nicht (oder sie wurde gelöscht). Neue Abteilungen legt nur der Admin an.` });
+    }
+  }
+
   try {
     // Optimistisches Locking: der Client schickt die Version mit, auf der
     // seine Änderung basiert (baseVersion). Weicht sie vom aktuellen
@@ -715,6 +726,11 @@ app.put('/api/departments/:code', (req: Request, res: Response) => {
 
 // 6. Create New Department
 app.post('/api/departments', (req: Request, res: Response) => {
+  const adminActor = getMaintActor(req, res);
+  if (!adminActor) return;
+  if (adminActor.type !== 'admin') {
+    return res.status(403).json({ error: 'Nur mit Administrator-Passwort.' });
+  }
   const { code: rawCode, name: rawName, template } = req.body;
   const code = normalizeCode(rawCode);
   if (!code) {
@@ -774,6 +790,11 @@ app.post('/api/departments', (req: Request, res: Response) => {
 
 // 7. Delete Department
 app.delete('/api/departments/:code', (req: Request, res: Response) => {
+  const adminActor = getMaintActor(req, res);
+  if (!adminActor) return;
+  if (adminActor.type !== 'admin') {
+    return res.status(403).json({ error: 'Nur mit Administrator-Passwort.' });
+  }
   const code = normalizeCode(req.params.code);
   const filePath = getDeptFilePath(code);
   if (!fs.existsSync(filePath)) {
@@ -898,7 +919,9 @@ app.post('/api/admin/verify', (req: Request, res: Response) => {
   const isValid = !!cfg.adminPasswordHash && verifyPasswordHash(password || '', cfg.adminPasswordHash);
   if (isValid) {
     recordSuccessfulAttempt(req.ip || 'unknown');
-  } else {
+  } else if (password) {
+    // Eine leere Anfrage ist nur die Abfrage "gilt noch das Standardpasswort?" (Admin-Anmeldeseite) und
+    // kein Rateversuch - sie darf die Sperre nicht hochzählen.
     recordFailedAttempt(req.ip || 'unknown');
   }
 

@@ -373,6 +373,7 @@ export async function saveDepartmentDBAsync(code: string, data: DepartmentDataba
   }
 
   // 2. Sync to Server Intranet API if available
+  let gotJsonAnswer = false;
   try {
     const payload = {
       ...data,
@@ -390,12 +391,14 @@ export async function saveDepartmentDBAsync(code: string, data: DepartmentDataba
     });
 
     const contentType = res.headers.get('content-type') || '';
-    if (res.status === 409 && contentType.includes('application/json')) {
+    gotJsonAnswer = contentType.includes('application/json');
+    if (gotJsonAnswer) markRealServerSeen();
+    if (res.status === 409 && gotJsonAnswer) {
       const body = await res.json();
       return { status: 'conflict', current: normalizeDepartmentDatabase(body.current) };
     }
 
-    if (res.ok && contentType.includes('application/json')) {
+    if (res.ok && gotJsonAnswer) {
       const result = await res.json();
       const serverConfirmed: DepartmentDatabase = {
         ...data,
@@ -409,12 +412,22 @@ export async function saveDepartmentDBAsync(code: string, data: DepartmentDataba
       } catch {}
       return { status: 'ok', data: serverConfirmed };
     }
+
+    // Der Server hat geantwortet, aber abgelehnt (400/403/429/500): NICHT als Erfolg melden.
+    if (gotJsonAnswer) {
+      console.error(`[Intranet DB] Server rejected save for ${norm} (HTTP ${res.status}).`);
+      return { status: 'error' };
+    }
   } catch (err) {
-    console.debug(`[Intranet DB] Server save unreachable for ${norm} (saved in local storage):`, err);
+    console.debug(`[Intranet DB] Server save unreachable for ${norm}:`, err);
   }
 
-  // If server is not running (e.g. Vercel static deployment or offline),
-  // return success because data is safely saved in local storage!
+  // Kein Server erreichbar. Hat dieser Browser jemals einen echten Intranet-Server gesehen, ist das ein
+  // FEHLER (Server down, Netz weg) - die Änderung ist nur lokal und darf nicht als gespeichert gelten.
+  // Nur in der statisch gehosteten Demo (nie einen echten Server gesehen) ist lokales Speichern der Normalfall.
+  if (hasEverSeenRealServer()) {
+    return { status: 'error' };
+  }
   return { status: 'ok', data: locallySaved };
 }
 
@@ -449,8 +462,9 @@ export function saveDepartmentDB(code: string, data: DepartmentDatabase): void {
 export async function createNewDepartmentAsync(
   code: string,
   name?: string,
-  template: 'seed' | 'empty' = 'seed'
-): Promise<DepartmentDatabase> {
+  template: 'seed' | 'empty' = 'seed',
+  adminPassword?: string
+): Promise<{ ok: boolean; error?: string }> {
   const norm = normalizeCode(code);
   const defaultName = name && name.trim() ? name.trim() : `Abteilung ${norm}`;
 
@@ -479,19 +493,46 @@ export async function createNewDepartmentAsync(
     updateDepartmentInRegistryCache(baseDB);
   } catch {}
 
-  // Try server
+  // Try server (Neuanlage verlangt serverseitig das Admin-Passwort)
   try {
     const res = await fetch(`/api/departments/${norm}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(adminPassword ? { 'X-Admin-Password': encodeURIComponent(adminPassword) } : {}),
+      },
       body: JSON.stringify(baseDB),
     });
-    if (res.ok) {
+    const isJson = (res.headers.get('content-type') || '').includes('application/json');
+    if (isJson) markRealServerSeen();
+    if (res.ok && isJson) {
       await listRegisteredDepartmentsAsync();
+      return { ok: true };
+    }
+    if (isJson) {
+      let message = `Abteilung konnte nicht angelegt werden (HTTP ${res.status}).`;
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch {}
+      // Lokalen Eintrag wieder entfernen, sonst erscheint eine Abteilung, die der Server nicht kennt.
+      try {
+        localStorage.removeItem(`${LOCAL_CACHE_PREFIX}${norm}`);
+        removeDepartmentFromRegistryCache(norm);
+      } catch {}
+      return { ok: false, error: message };
     }
   } catch {}
 
-  return baseDB;
+  if (hasEverSeenRealServer()) {
+    try {
+      localStorage.removeItem(`${LOCAL_CACHE_PREFIX}${norm}`);
+      removeDepartmentFromRegistryCache(norm);
+    } catch {}
+    return { ok: false, error: 'Server nicht erreichbar - die Abteilung wurde nicht angelegt.' };
+  }
+  return { ok: true }; // statische Demo: lokal angelegt
 }
 
 export function createNewDepartment(
@@ -527,8 +568,29 @@ export function createNewDepartment(
 /**
  * Deletes a department
  */
-export async function deleteDepartmentAsync(code: string): Promise<boolean> {
+export async function deleteDepartmentAsync(code: string, adminPassword?: string): Promise<boolean> {
   const norm = normalizeCode(code);
+
+  // Erst der Server (verlangt das Admin-Passwort), lokal nur aufräumen, wenn das gelungen ist bzw. in der Demo.
+  let deletedOnServer = false;
+  let answered = false;
+  try {
+    const res = await fetch(`/api/departments/${norm}`, {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+        ...(adminPassword ? { 'X-Admin-Password': encodeURIComponent(adminPassword) } : {}),
+      },
+    });
+    answered = (res.headers.get('content-type') || '').includes('application/json');
+    if (answered) markRealServerSeen();
+    deletedOnServer = res.ok && answered;
+  } catch {}
+
+  if (!deletedOnServer && (answered || hasEverSeenRealServer())) {
+    return false; // Server hat abgelehnt oder ist nicht erreichbar: nichts lokal wegräumen, Fehler melden
+  }
+
   try {
     localStorage.removeItem(`${LOCAL_CACHE_PREFIX}${norm}`);
     removeDepartmentFromRegistryCache(norm);
@@ -536,12 +598,6 @@ export async function deleteDepartmentAsync(code: string): Promise<boolean> {
       setCurrentDepartmentCode(null);
     }
   } catch {}
-
-  try {
-    const res = await fetch(`/api/departments/${norm}`, { method: 'DELETE' });
-    return res.ok;
-  } catch {}
-
   return true;
 }
 
@@ -761,18 +817,40 @@ export function exportDepartmentJSON(code: string): string {
   return JSON.stringify(db, null, 2);
 }
 
-export function importDepartmentJSON(jsonStr: string): { success: boolean; code?: string; error?: string } {
+export async function importDepartmentJSON(
+  jsonStr: string
+): Promise<{ success: boolean; code?: string; error?: string }> {
+  let parsed: DepartmentDatabase;
   try {
-    const parsed = JSON.parse(jsonStr) as DepartmentDatabase;
-    if (!parsed.departmentCode || !Array.isArray(parsed.employees) || !Array.isArray(parsed.machines)) {
-      return { success: false, error: 'Ungültiges Schichtplan-Datenbankformat.' };
-    }
-    const normCode = normalizeCode(parsed.departmentCode);
-    saveDepartmentDB(normCode, parsed);
-    return { success: true, code: normCode };
+    parsed = JSON.parse(jsonStr) as DepartmentDatabase;
   } catch (err) {
     return { success: false, error: 'JSON-Parsing-Fehler: ' + (err instanceof Error ? err.message : String(err)) };
   }
+  if (!parsed.departmentCode || !Array.isArray(parsed.employees) || !Array.isArray(parsed.machines)) {
+    return { success: false, error: 'Ungültiges Schichtplan-Datenbankformat.' };
+  }
+  const normCode = normalizeCode(parsed.departmentCode);
+
+  // Die Versionsnummer in der Datei ist die von damals. Für den Server muss die AKTUELLE Version als
+  // Basis dienen, sonst lehnt er den Import als Konflikt ab (früher wurde das still ignoriert).
+  const current = await fetchApiJson<DepartmentDatabase>(`/api/departments/${normCode}`);
+  const toSave: DepartmentDatabase = {
+    ...normalizeDepartmentDatabase(parsed),
+    departmentCode: normCode,
+    version: current && typeof current.version === 'number' ? current.version : parsed.version,
+  };
+
+  const result = await saveDepartmentDBAsync(normCode, toSave);
+  if (result.status === 'ok') return { success: true, code: normCode };
+  if (result.status === 'conflict') {
+    return { success: false, error: 'Zwischenzeitlich hat jemand anderes gespeichert. Bitte den Import erneut ausführen.' };
+  }
+  return {
+    success: false,
+    error: current
+      ? 'Der Server hat den Import nicht angenommen oder ist nicht erreichbar. Es wurde nichts geändert.'
+      : 'Der Server hat den Import nicht angenommen oder ist nicht erreichbar. Es wurde nichts geändert. (Eine neue Abteilung kann nur der Admin im Admin-Bereich anlegen.)',
+  };
 }
 
 // -------------------------------------------------------------

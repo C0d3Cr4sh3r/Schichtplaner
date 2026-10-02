@@ -83,7 +83,7 @@ API (JSON; Header `X-Kuerzel` bzw. `X-Admin-Password`, jeweils URL-kodiert):
 ### Authentifizierung
 
 - **Mitarbeiter-Zugang:** Eintritt über ein Abteilungskürzel (z.B. `FERT-A`), keine individuellen Benutzerkonten oder Passwörter pro Mitarbeiter.
-- **Admin-Zugang:** Ein einzelnes, geteiltes Admin-Passwort für Verwaltungsfunktionen (neue Abteilungen anlegen, löschen, Instandhaltungslisten verwalten). *Einschränkung:* Bei Abteilungen schützt das Passwort das Anlegen/Löschen bisher nur in der Oberfläche; der Server prüft es dort nicht zusätzlich (bei Instandhaltungslisten schon). Das Passwort wird serverseitig mit `scrypt` gehasht gespeichert (Node.js-Bordmittel, keine externe Abhängigkeit), nie im Klartext. Nach 5 Fehlversuchen sperrt der Server Anmeldeversuche von derselben Adresse für 30 Sekunden.
+- **Admin-Zugang:** Ein einzelnes, geteiltes Admin-Passwort für Verwaltungsfunktionen (neue Abteilungen anlegen, löschen, Instandhaltungslisten verwalten). Der Server prüft das Passwort bei allen diesen Aktionen selbst (Header `X-Admin-Password`); auch das Neuanlegen einer Abteilung per `PUT` verlangt es. Normales Speichern einer bestehenden Abteilung braucht es nicht. Das Passwort wird serverseitig mit `scrypt` gehasht gespeichert (Node.js-Bordmittel, keine externe Abhängigkeit), nie im Klartext. Nach 5 Fehlversuchen sperrt der Server Anmeldeversuche von derselben Adresse für 30 Sekunden.
 
 ## Projektstruktur
 

@@ -77,11 +77,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
       if (content) {
         setImportText(content);
-        const res = importDepartmentJSON(content);
+        const res = await importDepartmentJSON(content);
         if (res.success && res.code) {
           setStatusMsg({ type: 'success', text: `Datenbank für "${res.code}" erfolgreich importiert!` });
           onImportSuccess(res.code);
@@ -93,9 +93,9 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({
     reader.readAsText(file);
   };
 
-  const handleManualImport = () => {
+  const handleManualImport = async () => {
     if (!importText.trim()) return;
-    const res = importDepartmentJSON(importText);
+    const res = await importDepartmentJSON(importText);
     if (res.success && res.code) {
       setStatusMsg({ type: 'success', text: `Datenbank für "${res.code}" erfolgreich importiert!` });
       onImportSuccess(res.code);

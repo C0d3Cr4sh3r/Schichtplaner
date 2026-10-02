@@ -168,7 +168,12 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
     }
 
     setCreationError(null);
-    await createNewDepartmentAsync(cleanCode, newDeptName.trim() || undefined, newDeptTemplate);
+    const created = await createNewDepartmentAsync(cleanCode, newDeptName.trim() || undefined, newDeptTemplate, verifiedAdminPassword);
+    if (!created.ok) {
+      setCreationError(created.error || 'Die Abteilung konnte nicht angelegt werden.');
+      await loadDepartments();
+      return;
+    }
     await loadDepartments();
     setCreationSuccess(cleanCode);
     setNewDeptCode('');
@@ -212,7 +217,10 @@ export const DepartmentLogin: React.FC<DepartmentLoginProps> = ({
         `Sind Sie sicher, dass Sie die Abteilung „${code}“ unwiderruflich löschen möchten? Alle Schichten, Maschinen und Mitarbeiter dieser Abteilung werden entfernt.`
       )
     ) {
-      await deleteDepartmentAsync(code);
+      const deleted = await deleteDepartmentAsync(code, verifiedAdminPassword);
+      if (!deleted) {
+        alert('Die Abteilung konnte nicht gelöscht werden (Server hat abgelehnt oder ist nicht erreichbar). Es wurde nichts verändert.');
+      }
       await loadDepartments();
     }
   };

@@ -171,7 +171,7 @@ export default function App() {
               {saveStatus.kind === 'error' ? (
                 <>
                   <span className="font-semibold block">Speichern fehlgeschlagen</span>
-                  Die letzte Änderung konnte nicht gespeichert werden. Bitte Verbindung prüfen und erneut versuchen.
+                  Die letzte Änderung wurde vom Server nicht gespeichert (Verbindung weg oder abgelehnt). Die Anzeige zeigt sie evtl. trotzdem noch — bitte Verbindung prüfen, die Änderung erneut vornehmen und im Zweifel die Seite neu laden.
                 </>
               ) : (
                 <>
