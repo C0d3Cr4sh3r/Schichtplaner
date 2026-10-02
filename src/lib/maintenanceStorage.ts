@@ -152,11 +152,21 @@ async function rawRequest(method: string, path: string, auth: Partial<MaintAuth>
   }
 }
 
+// Lesen: einfach nicht erreichbar.
 const NETWORK_ERROR: MaintResult<never> = {
   ok: false,
   status: 0,
   network: true,
-  error: 'Server nicht erreichbar - es wurde nichts gespeichert. Bitte Verbindung prüfen und erneut versuchen.',
+  error: 'Server nicht erreichbar. Bitte Verbindung prüfen.',
+};
+
+// Schreiben: Bei Zeitüberschreitung oder Verbindungsabbruch kann der Server die Aktion trotzdem noch
+// ausgeführt haben - daher NICHT behaupten, es sei nichts gespeichert worden.
+const WRITE_NETWORK_ERROR: MaintResult<never> = {
+  ok: false,
+  status: 0,
+  network: true,
+  error: 'Keine Antwort vom Server. Ob die Aktion gespeichert wurde, ist unklar - bitte erst die Liste prüfen, bevor Sie es erneut versuchen (sonst droht ein doppelter Eintrag).',
 };
 
 function fromServer<T>(raw: Extract<RawResponse, { kind: 'server' }>): MaintResult<T> {
@@ -293,9 +303,9 @@ export async function maintLoginAsync(listCodeRaw: string, kuerzelRaw: string): 
 /** Liest die Liste. Mit knownVersion antwortet der Server bei Gleichstand nur mit {unchanged:true}. */
 export async function maintFetchListAsync(
   auth: MaintAuth,
-  knownVersion?: number
+  known?: { version: number; lastModified: string }
 ): Promise<MaintResult<{ list?: MaintenanceList; unchanged?: boolean }>> {
-  const query = knownVersion !== undefined ? `?version=${knownVersion}` : '';
+  const query = known ? `?version=${known.version}&modified=${encodeURIComponent(known.lastModified)}` : '';
   const raw = await rawRequest('GET', `/api/maintenance/${encodeURIComponent(auth.listCode)}${query}`, auth);
   if (raw.kind === 'server') return fromServer(raw);
   if (hasEverSeenRealServer()) return NETWORK_ERROR;
@@ -307,7 +317,7 @@ export async function maintFetchListAsync(
   if (!auth.adminPassword && !findActiveUser(list, auth.kuerzel)) {
     return { ok: false, status: 401, error: 'Kürzel unbekannt oder deaktiviert. Bitte neu anmelden.' };
   }
-  if (knownVersion === list.version) return { ok: true, data: { unchanged: true } };
+  if (known && known.version === list.version && known.lastModified === list.lastModified) return { ok: true, data: { unchanged: true } };
   return { ok: true, data: { list } };
 }
 
@@ -321,7 +331,7 @@ async function mutate(
 ): Promise<MaintResult<ListChange>> {
   const raw = await rawRequest(method, path, auth, body);
   if (raw.kind === 'server') return fromServer<ListChange>(raw);
-  if (hasEverSeenRealServer()) return NETWORK_ERROR;
+  if (hasEverSeenRealServer()) return WRITE_NETWORK_ERROR;
 
   localDemoActive = true;
   const list = readDemoList(auth.listCode);
@@ -426,7 +436,7 @@ export async function maintAdminCreateListAsync(
 ): Promise<MaintResult<{ list: MaintenanceList }>> {
   const raw = await rawRequest('POST', '/api/maintenance', { adminPassword }, input);
   if (raw.kind === 'server') return fromServer(raw);
-  if (hasEverSeenRealServer()) return NETWORK_ERROR;
+  if (hasEverSeenRealServer()) return WRITE_NETWORK_ERROR;
 
   localDemoActive = true;
   ensureDemoSeed();
@@ -442,7 +452,7 @@ export async function maintAdminCreateListAsync(
 export async function maintAdminDeleteListAsync(adminPassword: string, code: string): Promise<MaintResult<{ success: boolean }>> {
   const raw = await rawRequest('DELETE', `/api/maintenance/${encodeURIComponent(code)}`, { adminPassword });
   if (raw.kind === 'server') return fromServer(raw);
-  if (hasEverSeenRealServer()) return NETWORK_ERROR;
+  if (hasEverSeenRealServer()) return WRITE_NETWORK_ERROR;
 
   localDemoActive = true;
   try {

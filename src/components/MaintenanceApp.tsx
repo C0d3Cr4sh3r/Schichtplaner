@@ -103,27 +103,48 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
 
   const auth: MaintAuth = useMemo(() => ({ listCode: session.listCode, kuerzel: session.kuerzel }), [session.listCode, session.kuerzel]);
 
-  // Version nur steigend übernehmen: eine verspätet eintreffende Poll-Antwort
-  // darf nie einen neueren, gerade vom Server bestätigten Stand überschreiben.
+  // Stand-Verwaltung. Die Race, die es zu vermeiden gilt: Eine Poll-Anfrage startet, dann bestätigt der
+  // Server eine eigene Aktion, danach trifft die ältere Poll-Antwort ein und würde den frischen Stand
+  // überschreiben. Deshalb: Antworten auf EIGENE Aktionen werden immer übernommen und zählen
+  // mutationSeq hoch; eine Poll-Antwort wird verworfen, wenn seit ihrem Start eine Aktion fertig wurde
+  // (der nächste Poll holt den Stand ohnehin). Bewusst KEIN Vergleich "Version nur steigend": Wird
+  // eine ältere Sicherung zurückgespielt, hat die Liste danach eine NIEDRIGERE Version und muss
+  // trotzdem angezeigt werden.
   const versionRef = useRef<number | undefined>(undefined);
+  const lastModifiedRef = useRef<string | undefined>(undefined);
+  const mutationSeqRef = useRef(0);
+  const pollInFlightRef = useRef(false);
   const applyList = useCallback((incoming: MaintenanceList) => {
-    setList((prev) => {
-      if (prev && incoming.version < prev.version) return prev;
-      versionRef.current = incoming.version;
-      return incoming;
-    });
+    versionRef.current = incoming.version;
+    lastModifiedRef.current = incoming.lastModified;
+    setList(incoming);
   }, []);
+  const applyMutationList = useCallback(
+    (incoming: MaintenanceList) => {
+      mutationSeqRef.current++;
+      applyList(incoming);
+    },
+    [applyList]
+  );
 
   // Regelmäßig den Stand vom Server holen, damit Änderungen der Kollegen
   // erscheinen. Bei unverändertem Stand antwortet der Server nur kurz.
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
-      const res = await maintFetchListAsync(auth, versionRef.current);
+      if (pollInFlightRef.current) return; // keine überlappenden Abfragen bei langsamer Verbindung
+      pollInFlightRef.current = true;
+      const seqAtStart = mutationSeqRef.current;
+      const known =
+        versionRef.current !== undefined && lastModifiedRef.current
+          ? { version: versionRef.current, lastModified: lastModifiedRef.current }
+          : undefined;
+      const res = await maintFetchListAsync(auth, known);
+      pollInFlightRef.current = false;
       if (cancelled) return;
       if (res.ok) {
         setLoadError(null);
-        if (res.data.list) applyList(res.data.list);
+        if (res.data.list && mutationSeqRef.current === seqAtStart) applyList(res.data.list);
       } else if (res.status === 401 || res.status === 404) {
         setSessionInvalid(res.status === 404 ? 'Diese Liste existiert nicht mehr.' : res.error);
       } else {
@@ -154,17 +175,17 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
     async (action: () => Promise<MaintResult<ListChange>>, successText?: string): Promise<MaintResult<ListChange>> => {
       const res = await action();
       if (res.ok) {
-        applyList(res.data.list);
+        applyMutationList(res.data.list);
         if (successText) setNotice({ kind: 'info', text: successText });
       } else {
-        if (res.list) applyList(res.list);
+        if (res.list) applyMutationList(res.list);
         if (res.status === 401) setSessionInvalid(res.error);
         else if (res.status === 409) setNotice({ kind: 'error', text: `${res.error} Der aktuelle Stand wurde geladen - bitte Ihre Aktion bei Bedarf wiederholen.` });
         else setNotice({ kind: 'error', text: res.error });
       }
       return res;
     },
-    [applyList]
+    [applyMutationList]
   );
 
   const handleLogout = () => {
@@ -310,7 +331,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
           </div>
         ) : tab === 'verwaltung' && isManager ? (
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-            <MaintenanceManage auth={auth} list={list} onListChange={applyList} ownKuerzel={session.kuerzel} />
+            <MaintenanceManage auth={auth} list={list} onListChange={applyMutationList} ownKuerzel={session.kuerzel} />
           </div>
         ) : (
           <div className="space-y-4">

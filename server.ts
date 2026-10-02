@@ -1187,7 +1187,8 @@ app.get('/api/maintenance/:code', (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Kürzel unbekannt oder deaktiviert. Bitte neu anmelden.' });
     }
     res.set('Cache-Control', 'no-store'); // Poll-Antworten nie aus dem Browser-Cache bedienen
-    if (String(req.query.version ?? '') === String(list.version)) {
+    // Version UND Zeitstempel vergleichen: eine zurückgespielte Sicherung kann zufällig dieselbe Versionsnummer haben.
+    if (String(req.query.version ?? '') === String(list.version) && String(req.query.modified ?? '') === list.lastModified) {
       return res.json({ unchanged: true, version: list.version });
     }
     res.json({ list });

@@ -661,7 +661,8 @@ export const UserManual: React.FC = () => {
                   automatisch den Stand des Vortages (30 Tage aufbewahrt, danach automatisch aufgeräumt). Diese
                   automatischen Backups finden Sie im Bereich „DB Export/DB Import" — dort lässt sich mit einem
                   Klick auf ein bestimmtes Datum der Stand von diesem Tag wiederherstellen, ganz ohne manuellen
-                  Export/Import.
+                  Export/Import. Die Instandhaltungslisten (Abschnitt 10) werden ebenfalls täglich gesichert; ihre
+                  Wiederherstellung erfolgt bisher über die IT (Sicherungsdatei zurückkopieren).
                 </p>
               </div>
             </div>
@@ -682,7 +683,7 @@ export const UserManual: React.FC = () => {
                 </span>
                 SchichtPlan Pro wurde speziell für industrielle Betriebe mit hohen Datenschutz- und
                 Betriebsratsanforderungen entwickelt. Im Intranet-Server-Modus findet keine Datenverarbeitung in
-                externen Clouds oder durch Dritte statt. Details, offene Punkte (u. a. Backup, Audit-Log,
+                externen Clouds oder durch Dritte statt. Details, offene Punkte (u. a. Auslagerung der Backups, Audit-Log,
                 Löschfristen, Transportverschlüsselung) und die vollständige Datenschutzerklärung finden Sie im
                 Bereich „Datenschutzerklärung & DSGVO" (verlinkt im Footer der Anwendung).
               </div>
@@ -856,7 +857,8 @@ export const UserManual: React.FC = () => {
                   Mehrere Personen können gleichzeitig Meldungen eintragen — nichts geht verloren, die Liste aktualisiert sich alle paar Sekunden von
                   selbst. Ändern zwei Personen <em>denselben</em> Eintrag gleichzeitig, wird die zweite Änderung nicht gespeichert (damit nichts
                   überschrieben wird); Sie sehen dann einen Hinweis und können den aktuellen Stand laden und neu bearbeiten. Schlägt eine Aktion
-                  fehl (z. B. Verbindung weg), erscheint eine Fehlermeldung — dann wurde nichts gespeichert.
+                  fehl (z. B. Verbindung weg), erscheint eine Fehlermeldung. Kam gar keine Antwort vom Server, ist unklar, ob die Aktion
+                  trotzdem gespeichert wurde — prüfen Sie dann bitte zuerst die Liste, bevor Sie es erneut versuchen (sonst entsteht ein doppelter Eintrag).
                 </p>
               </div>
 
