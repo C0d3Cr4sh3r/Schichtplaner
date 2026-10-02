@@ -866,9 +866,9 @@ export const UserManual: React.FC = () => {
                 <p>
                   Die <strong>Glocke</strong> oben zeigt Ihre <em>persönlichen</em> Hinweise: neue Meldungen und Sofort-Meldungen an den
                   Standorten, für die Ihr Kürzel Hinweise bekommt (einstellbar in der Verwaltung, „Hinweise für Standorte“), Meldungen, die Ihnen
-                  zugewiesen wurden, und Fortschritt an Ihren eigenen Meldungen (provisorisch behoben / erledigt). Dringendes (Sofort-Meldung am
-                  eigenen Standort, Zuweisung) erscheint zusätzlich als rotes Banner; neue Meldungen sind mit „NEU“ markiert, und der Tab-Titel zeigt
-                  die Anzahl. „Als gelesen markieren“ gilt <strong>nur für Sie</strong> — wenn ein Kollege etwas gelesen hat, bleibt es für Sie
+                  zugewiesen wurden, und Fortschritt an Ihren eigenen Meldungen (provisorisch behoben / erledigt). Alle ungelesenen Hinweise erscheinen oben als Banner (rot bei
+                  Dringendem wie Sofort-Meldung am eigenen Standort oder Zuweisung, sonst blau); neue Meldungen sind mit „NEU“ markiert, und der Tab-Titel
+                  zeigt die Anzahl. „Als gelesen markieren“ gilt <strong>nur für Sie</strong> — wenn ein Kollege etwas gelesen hat, bleibt es für Sie
                   ungelesen. Hinweise erscheinen nur, solange die Liste im Browser geöffnet ist.
                 </p>
               </div>

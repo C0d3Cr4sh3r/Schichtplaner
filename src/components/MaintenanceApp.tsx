@@ -275,7 +275,7 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
   // ---- Hinweise: persönlich pro Kürzel, aus den Daten abgeleitet (siehe computeNotices)
   const notices = useMemo(() => (list ? computeNotices(list, session.kuerzel) : []), [list, session.kuerzel]);
   const noticeByEntry = useMemo(() => new Map(notices.map((n) => [n.entry.id, n])), [notices]);
-  const urgentNotices = notices.filter((n) => n.urgent);
+  const hasUrgentNotice = notices.some((n) => n.urgent);
 
   // Erstmalig (noch kein persönlicher Marker): Marker auf "jetzt" setzen, damit der Altbestand nicht als neu gilt.
   const initSeenRef = useRef(false);
@@ -395,9 +395,10 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
                 onClick={() => setNoticesOpen((v) => !v)}
                 aria-label={`Hinweise (${notices.length} ungelesen)`}
                 aria-expanded={noticesOpen}
-                className={`relative inline-flex items-center gap-1 px-2 py-1 rounded-md border cursor-pointer ${notices.length > 0 ? 'bg-blue-50 border-blue-300 text-blue-800' : 'border-slate-200 text-slate-500 hover:bg-slate-100'}`}
+                className={`relative inline-flex items-center gap-1 px-2 py-1 rounded-md border cursor-pointer ${notices.length > 0 ? (hasUrgentNotice ? 'bg-red-600 border-red-700 text-white' : 'bg-blue-600 border-blue-700 text-white') : 'border-slate-200 text-slate-500 hover:bg-slate-100'}`}
               >
                 <Bell className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Hinweise</span>
                 {notices.length > 0 && <span className="font-bold">{notices.length}</span>}
               </button>
               {noticesOpen && (
@@ -472,19 +473,36 @@ export const MaintenanceApp: React.FC<MaintenanceAppProps> = ({ session, onLogou
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
-        {list && urgentNotices.length > 0 && (
-          <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900" data-testid="urgent-banner">
-            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <strong>{noticeLabel(urgentNotices[0])}:</strong> #{urgentNotices[0].entry.number} · {urgentNotices[0].entry.machine} ({urgentNotices[0].entry.location})
-              {urgentNotices.length > 1 && <span> – und {urgentNotices.length - 1} weitere dringende</span>}
+        {list && notices.length > 0 && (
+          <div
+            role="alert"
+            data-testid="notice-banner"
+            className={`mb-4 rounded-xl border px-4 py-3 text-sm ${hasUrgentNotice ? 'border-red-300 bg-red-50 text-red-900' : 'border-blue-300 bg-blue-50 text-blue-900'}`}
+          >
+            <div className="flex items-start gap-3">
+              {hasUrgentNotice ? <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" /> : <Bell className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />}
+              <ul className="flex-1 min-w-0 space-y-1">
+                {notices.slice(0, 3).map((n) => (
+                  <li key={n.entry.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <strong className={n.urgent ? 'text-red-700' : ''}>{noticeLabel(n)}:</strong>
+                    <span>
+                      #{n.entry.number} · {n.entry.machine} ({n.entry.location})
+                    </span>
+                    <button type="button" onClick={() => focusEntry(n.entry)} className="underline text-xs font-medium cursor-pointer">
+                      Anzeigen
+                    </button>
+                  </li>
+                ))}
+                {notices.length > 3 && <li className="text-xs opacity-80">… und {notices.length - 3} weitere (siehe Glocke oben)</li>}
+              </ul>
+              <button
+                type="button"
+                onClick={() => markNoticesSeen(notices)}
+                className={`shrink-0 px-3 py-1 rounded-lg border text-xs font-medium cursor-pointer ${hasUrgentNotice ? 'border-red-300 hover:bg-red-100' : 'border-blue-300 hover:bg-blue-100'}`}
+              >
+                Alle gelesen
+              </button>
             </div>
-            <button type="button" onClick={() => focusEntry(urgentNotices[0].entry)} className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer">
-              Anzeigen
-            </button>
-            <button type="button" onClick={() => markNoticesSeen(notices)} className="px-3 py-1 rounded-lg border border-red-300 hover:bg-red-100 text-xs font-medium cursor-pointer">
-              Gelesen
-            </button>
           </div>
         )}
         {!list ? (
